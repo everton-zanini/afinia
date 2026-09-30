@@ -4,7 +4,9 @@ import { createCredentialUser } from "../src/server/credentials";
 import { addMember } from "../src/server/households/members";
 import { onHouseholdCreated } from "../src/server/households/setup";
 import { assertTestDatabaseUrl } from "../src/server/test-db-guard";
+import { getHouseholdContext } from "../src/server/households/context";
 import { resetDatabase } from "../test/db";
+import { loadFixture } from "../test/finance-fixture";
 import { E2E } from "./fixtures";
 
 async function household(name: string, userIds: string[]) {
@@ -25,6 +27,9 @@ async function main() {
   const temp = await createCredentialUser({ ...E2E.temp, mustChangePassword: true });
   await household("Casa Ana e Beto", [ana.id, beto.id]);
   await household("Casa Temporária", [temp.id]);
+  const fx = await createCredentialUser({ ...E2E.fixture, mustChangePassword: false });
+  await household("Casa Fixture", [fx.id]);
+  await loadFixture((await getHouseholdContext(fx.id))!);
 }
 
 main()

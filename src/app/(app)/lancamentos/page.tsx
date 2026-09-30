@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Download, ListOrdered, Search } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Download, List, ListOrdered, Search } from "lucide-react";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { FormMessage } from "@/components/form";
@@ -13,6 +13,7 @@ import { listCategories } from "@/server/finance/categories";
 import { LIST_LIMIT, listTransactions, type TransactionDTO } from "@/server/finance/transactions";
 import { requireHousehold } from "@/server/session";
 import { FiltersSheet } from "./filters-sheet";
+import { MonthCalendar } from "./month-calendar";
 import { parseListParams, toQuery } from "./params";
 
 export const metadata: Metadata = { title: "Lançamentos" };
@@ -100,6 +101,28 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/lan
           />
         </div>
 
+        {month && (
+          <nav aria-label="Modo de visualização" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+            {[
+              { id: null, label: "Lista", Icon: List },
+              { id: "calendario", label: "Calendário", Icon: CalendarDays },
+            ].map(({ id, label, Icon }) => {
+              const active = (raw.visao ?? null) === id;
+              return (
+                <Link
+                  key={label}
+                  href={`/lancamentos${toQuery(raw, { visao: id })}`}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg text-sm font-medium ${active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                >
+                  <Icon aria-hidden className="size-4" />
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
+
         <section aria-label="Resumo do período" className="grid grid-cols-2 gap-2">
           <div className="rounded-2xl bg-card p-3 ring-1 ring-border">
             <p className="text-xs font-medium text-muted-foreground">Entrou (realizado)</p>
@@ -117,7 +140,14 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/lan
           </div>
         </section>
 
-        {rows.length === 0 ? (
+        {month && raw.visao === "calendario" ? (
+          <MonthCalendar
+            month={month}
+            rows={rows}
+            today={today}
+            linkQuery={(day) => toQuery(raw, { mes: null, visao: null, de: day, ate: day })}
+          />
+        ) : rows.length === 0 ? (
           <EmptyState
             icon={ListOrdered}
             title={activeFilters ? "Nenhum lançamento encontrado" : "Nenhum lançamento neste período"}

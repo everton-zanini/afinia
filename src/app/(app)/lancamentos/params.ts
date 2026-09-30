@@ -17,7 +17,7 @@ export type ListParams = {
  */
 export function parseListParams(sp: Raw): ListParams {
   const raw: Record<string, string> = {};
-  for (const key of ["mes", "de", "ate", "q", "categoria", "conta", "situacao", "tipo", "pessoa"]) {
+  for (const key of ["mes", "de", "ate", "q", "categoria", "conta", "situacao", "tipo", "pessoa", "visao"]) {
     const v = first(sp[key]);
     if (v) raw[key] = v;
   }
