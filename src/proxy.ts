@@ -21,5 +21,6 @@ export const config = {
     "/mais/:path*",
     "/admin/:path*",
     "/definir-senha",
+    "/sem-casal",
   ],
 };

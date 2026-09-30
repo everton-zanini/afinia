@@ -1,6 +1,15 @@
 "use client";
 
-import { useId, type ComponentProps, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useTransition,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { useFormStatus } from "react-dom";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -57,13 +66,54 @@ export function FieldError({ id, children }: { id?: string; children: ReactNode 
   );
 }
 
+const PendingContext = createContext<boolean | null>(null);
+
+/**
+ * Formulário para Server Actions que não limpa os campos quando a validação falha
+ * (o `action` nativo do React reseta o formulário após cada envio).
+ */
+export function ActionForm({
+  action,
+  resetOnSuccess,
+  state,
+  children,
+  ...props
+}: Omit<ComponentProps<"form">, "action" | "onSubmit"> & {
+  action: (formData: FormData) => void;
+  resetOnSuccess?: boolean;
+  state?: { ok: boolean };
+}) {
+  const [pending, startTransition] = useTransition();
+  const ref = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (resetOnSuccess && state?.ok) ref.current?.reset();
+  }, [resetOnSuccess, state]);
+  return (
+    <form
+      ref={ref}
+      noValidate
+      {...props}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (pending) return;
+        const formData = new FormData(e.currentTarget);
+        startTransition(() => action(formData));
+      }}
+    >
+      <PendingContext.Provider value={pending}>{children}</PendingContext.Provider>
+    </form>
+  );
+}
+
 export function SubmitButton({
   children,
   pendingLabel = "Salvando…",
   className,
   ...props
 }: ComponentProps<typeof Button> & { pendingLabel?: string }) {
-  const { pending } = useFormStatus();
+  const status = useFormStatus();
+  const ctx = useContext(PendingContext);
+  const pending = ctx ?? status.pending;
   return (
     <Button type="submit" disabled={pending || props.disabled} className={cn("w-full", className)} {...props}>
       {pending ? (

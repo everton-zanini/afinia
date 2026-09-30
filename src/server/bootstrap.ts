@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { db } from "@/server/db";
 import { createCredentialUser, normalizeEmail } from "@/server/credentials";
+import { addMember } from "@/server/households/members";
+import { onHouseholdCreated } from "@/server/households/setup";
 
 const bootstrapEnvSchema = z.object({
   BOOTSTRAP_ADMIN_EMAIL: z.email("BOOTSTRAP_ADMIN_EMAIL inválido"),
@@ -10,7 +12,7 @@ const bootstrapEnvSchema = z.object({
     .min(12, "BOOTSTRAP_ADMIN_PASSWORD deve ter pelo menos 12 caracteres"),
 });
 
-export type BootstrapResult = { userId: string; created: boolean };
+export type BootstrapResult = { userId: string; created: boolean; householdCreated: boolean };
 
 /**
  * Cria o administrador da plataforma. Idempotente: se o email já existe, apenas garante a
@@ -28,20 +30,38 @@ export async function runBootstrap(env: Record<string, string | undefined>): Pro
   const { BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_NAME, BOOTSTRAP_ADMIN_PASSWORD } = parsed.data;
   const email = normalizeEmail(BOOTSTRAP_ADMIN_EMAIL);
 
+  let userId: string;
+  let created = false;
   const existing = await db.user.findUnique({ where: { email } });
   if (existing) {
+    userId = existing.id;
     if (!existing.isPlatformAdmin) {
       await db.user.update({ where: { id: existing.id }, data: { isPlatformAdmin: true } });
     }
-    return { userId: existing.id, created: false };
+  } else {
+    const user = await createCredentialUser({
+      name: BOOTSTRAP_ADMIN_NAME,
+      email,
+      password: BOOTSTRAP_ADMIN_PASSWORD,
+      isPlatformAdmin: true,
+      mustChangePassword: true,
+    });
+    userId = user.id;
+    created = true;
   }
 
-  const user = await createCredentialUser({
-    name: BOOTSTRAP_ADMIN_NAME,
-    email,
-    password: BOOTSTRAP_ADMIN_PASSWORD,
-    isPlatformAdmin: true,
-    mustChangePassword: true,
-  });
-  return { userId: user.id, created: true };
+  const householdName = env.BOOTSTRAP_HOUSEHOLD_NAME?.trim();
+  let householdCreated = false;
+  if (householdName) {
+    const membership = await db.householdMember.findUnique({ where: { userId }, select: { id: true } });
+    if (!membership) {
+      await db.$transaction(async (tx) => {
+        const household = await tx.household.create({ data: { name: householdName } });
+        await addMember(tx, household.id, userId);
+        await onHouseholdCreated(tx, household.id);
+      });
+      householdCreated = true;
+    }
+  }
+  return { userId, created, householdCreated };
 }

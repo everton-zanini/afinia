@@ -1,14 +1,14 @@
 "use client";
 
 import { useActionState } from "react";
-import { Field, FormMessage, SubmitButton } from "@/components/form";
+import { ActionForm, Field, FormMessage, SubmitButton } from "@/components/form";
 import { changePasswordAction } from "@/server/actions/auth";
 
 export function PasswordForm({ temporary = false }: { temporary?: boolean }) {
   const [state, action] = useActionState(changePasswordAction, { ok: false });
   const e = state.fieldErrors ?? {};
   return (
-    <form action={action} className="grid gap-4" noValidate>
+    <ActionForm action={action} state={state} resetOnSuccess className="grid gap-4">
       <Field
         label={temporary ? "Senha temporária" : "Senha atual"}
         name="currentPassword"
@@ -41,6 +41,6 @@ export function PasswordForm({ temporary = false }: { temporary?: boolean }) {
           Ao alterar a senha, você continua conectado aqui e as sessões em outros aparelhos são encerradas.
         </p>
       )}
-    </form>
+    </ActionForm>
   );
 }

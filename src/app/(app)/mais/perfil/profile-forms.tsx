@@ -1,24 +1,24 @@
 "use client";
 
 import { useActionState } from "react";
-import { Field, FormMessage, SubmitButton } from "@/components/form";
+import { ActionForm, Field, FormMessage, SubmitButton } from "@/components/form";
 import { updateEmailAction, updateNameAction } from "@/server/actions/auth";
 
 export function NameForm({ name }: { name: string }) {
   const [state, action] = useActionState(updateNameAction, { ok: false });
   return (
-    <form action={action} className="grid gap-3" noValidate>
+    <ActionForm action={action} className="grid gap-3">
       <Field label="Seu nome" name="name" defaultValue={name} autoComplete="name" error={state.fieldErrors?.name} />
       <FormMessage ok={state.ok} message={state.message} />
       <SubmitButton>Salvar nome</SubmitButton>
-    </form>
+    </ActionForm>
   );
 }
 
 export function EmailForm({ email }: { email: string }) {
   const [state, action] = useActionState(updateEmailAction, { ok: false });
   return (
-    <form action={action} className="grid gap-3" noValidate>
+    <ActionForm action={action} className="grid gap-3">
       <Field
         label="Email"
         name="email"
@@ -37,6 +37,6 @@ export function EmailForm({ email }: { email: string }) {
       />
       <FormMessage ok={state.ok} message={state.message} />
       <SubmitButton>Salvar email</SubmitButton>
-    </form>
+    </ActionForm>
   );
 }

@@ -1,10 +1,10 @@
 import { Target } from "lucide-react";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { EmptyState } from "@/components/empty-state";
-import { requireUser } from "@/server/session";
+import { requireHousehold } from "@/server/session";
 
 export default async function Page() {
-  await requireUser();
+  await requireHousehold();
   return (
     <>
       <PageHeader title="Planejamento" />

@@ -5,6 +5,14 @@ import { createCredentialUser } from "@/server/credentials";
 import { changePassword, updateEmail, updateName } from "@/server/services/profile";
 import { runBootstrap } from "@/server/bootstrap";
 import { resetDatabase } from "../../test/db";
+import { createHouseholdWith } from "../../test/factories";
+
+/** Usuário participante de um casal ativo (condição para conseguir entrar). */
+async function memberUser(input: Parameters<typeof createCredentialUser>[0]) {
+  const user = await createCredentialUser(input);
+  await createHouseholdWith(`Casal de ${input.name}`, [user]);
+  return user;
+}
 
 async function signIn(email: string, password: string) {
   return auth.api.signInEmail({ body: { email, password }, asResponse: true });
@@ -16,7 +24,7 @@ beforeEach(async () => {
 
 describe("login", () => {
   it("cria sessão com credenciais válidas e recusa inválidas com a mesma mensagem", async () => {
-    await createCredentialUser({ name: "Ana", email: "ana@exemplo.com", password: "senha-correta-1" });
+    await memberUser({ name: "Ana", email: "ana@exemplo.com", password: "senha-correta-1" });
 
     const ok = await signIn("ana@exemplo.com", "senha-correta-1");
     expect(ok.status).toBe(200);
@@ -39,7 +47,7 @@ describe("login", () => {
   });
 
   it("bloqueia após 5 falhas, mesmo com a senha correta", async () => {
-    await createCredentialUser({ name: "Ana", email: "ana@exemplo.com", password: "senha-correta-1" });
+    await memberUser({ name: "Ana", email: "ana@exemplo.com", password: "senha-correta-1" });
     for (let i = 0; i < 5; i++) {
       expect((await signIn("ana@exemplo.com", "errada-123")).status).toBe(401);
     }
@@ -52,7 +60,7 @@ describe("login", () => {
   });
 
   it("sucesso zera o contador de falhas", async () => {
-    await createCredentialUser({ name: "Ana", email: "ana@exemplo.com", password: "senha-correta-1" });
+    await memberUser({ name: "Ana", email: "ana@exemplo.com", password: "senha-correta-1" });
     await signIn("ana@exemplo.com", "errada-123");
     await signIn("ana@exemplo.com", "errada-123");
     expect((await signIn("ana@exemplo.com", "senha-correta-1")).status).toBe(200);
@@ -79,7 +87,7 @@ describe("perfil", () => {
 
 describe("troca de senha", () => {
   it("revoga as outras sessões e mantém a atual", async () => {
-    const u = await createCredentialUser({
+    const u = await memberUser({
       name: "Ana",
       email: "ana@exemplo.com",
       password: "senha-temporaria",
@@ -129,7 +137,7 @@ describe("bootstrap", () => {
     expect(admin.mustChangePassword).toBe(true);
 
     const second = await runBootstrap({ ...env, BOOTSTRAP_ADMIN_PASSWORD: "outra-senha-qualquer", BOOTSTRAP_ADMIN_NAME: "X" });
-    expect(second).toEqual({ userId: admin.id, created: false });
+    expect(second).toEqual({ userId: admin.id, created: false, householdCreated: false });
     expect((await db.user.findUniqueOrThrow({ where: { id: admin.id } })).name).toBe("Admin");
     expect((await signIn("admin@exemplo.com", "senha-temporaria-forte")).status).toBe(200);
     expect((await signIn("admin@exemplo.com", "outra-senha-qualquer")).status).toBe(401);

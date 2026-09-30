@@ -7,6 +7,12 @@ export async function login(page: Page, email: string, password: string) {
   await page.getByRole("button", { name: "Entrar" }).click();
 }
 
+/** Login que aguarda sair da tela de login (sessão estabelecida). */
+export async function loginOk(page: Page, email: string, password: string) {
+  await login(page, email, password);
+  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+}
+
 export async function expectNoHorizontalScroll(page: Page) {
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

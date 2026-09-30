@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { KeyRound, LogOut, UserRound } from "lucide-react";
+import { KeyRound, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { MenuList } from "@/components/menu-list";
 import { logoutAction } from "@/server/actions/auth";
@@ -24,6 +24,23 @@ export default async function MorePage() {
             ]}
           />
         </section>
+        {user.isPlatformAdmin && (
+          <section aria-labelledby="plataforma" className="grid gap-2">
+            <h2 id="plataforma" className="px-1 text-sm font-semibold text-muted-foreground">
+              Plataforma
+            </h2>
+            <MenuList
+              items={[
+                {
+                  href: "/admin",
+                  label: "Administração",
+                  description: "Casais de teste e acessos",
+                  icon: ShieldCheck,
+                },
+              ]}
+            />
+          </section>
+        )}
         <form action={logoutAction}>
           <button
             type="submit"

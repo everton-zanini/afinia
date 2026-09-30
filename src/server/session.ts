@@ -1,8 +1,9 @@
 import "server-only";
 import { cache } from "react";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { getHouseholdContext } from "@/server/households/context";
 
 export type SessionUser = {
   id: string;
@@ -35,5 +36,23 @@ export async function requireUser(opts: { allowTemporaryPassword?: boolean } = {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.user.mustChangePassword && !opts.allowTemporaryPassword) redirect("/definir-senha");
+  return session;
+}
+
+/** Contexto do casal do usuário da sessão, memoizado por requisição. */
+export const getCurrentHousehold = cache(async (userId: string) => getHouseholdContext(userId));
+
+/** Exige usuário com vínculo ativo em casal ativo. Todas as páginas/ações financeiras usam isto. */
+export async function requireHousehold() {
+  const session = await requireUser();
+  const ctx = await getCurrentHousehold(session.user.id);
+  if (!ctx) redirect("/sem-casal");
+  return { ...session, ctx };
+}
+
+/** Exige administrador da plataforma; para os demais, a rota simplesmente não existe. */
+export async function requireAdmin() {
+  const session = await requireUser();
+  if (!session.user.isPlatformAdmin) notFound();
   return session;
 }

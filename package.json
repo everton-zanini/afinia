@@ -22,7 +22,7 @@
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "vitest run --project unit",
     "test:integration": "npm run db:test:migrate && tsx scripts/with-test-db.ts vitest run --project integration",
-    "e2e": "npm run db:test:migrate && tsx scripts/with-test-db.ts playwright test"
+    "e2e": "npm run db:test:migrate && npm run build && tsx scripts/with-test-db.ts playwright test"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10",

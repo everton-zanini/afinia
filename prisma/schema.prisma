@@ -25,6 +25,7 @@ model User {
   mustChangePassword Boolean   @default(false)
   sessions           Session[]
   accounts           Account[]
+  membership         HouseholdMember?
 
   @@map("user")
 }
@@ -84,6 +85,38 @@ model RateLimit {
   lastRequest BigInt
 
   @@map("rate_limit")
+}
+
+// ---------------------------------------------------------------------------
+// Casal (tenant)
+// ---------------------------------------------------------------------------
+
+// Invariante: todo dado financeiro pertence a exatamente um Household.
+model Household {
+  id        String            @id @default(cuid())
+  name      String
+  // Casal desativado: dados preservados, login e sessões dos membros bloqueados.
+  active    Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  members   HouseholdMember[]
+
+  @@map("household")
+}
+
+// Invariantes: um casal por usuário (userId único); no máximo 2 membros ativos por casal
+// (garantido em src/server/households/members.ts, único ponto que cria vínculos).
+model HouseholdMember {
+  id          String    @id @default(cuid())
+  householdId String
+  userId      String    @unique
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([householdId, active])
+  @@map("household_member")
 }
 
 // Limitação de tentativas de login por email (regra do Afinia).

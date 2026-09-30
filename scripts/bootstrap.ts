@@ -11,6 +11,7 @@ runBootstrap(process.env)
         ? "Administrador criado. A troca de senha será exigida no primeiro acesso."
         : "Administrador já existia; nenhum dado foi sobrescrito.",
     );
+    if (result.householdCreated) console.log("Casal do administrador criado.");
   })
   .catch((error: unknown) => {
     console.error(`Bootstrap não executado: ${error instanceof Error ? error.message : String(error)}`);

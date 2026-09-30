@@ -23,20 +23,16 @@ import * as profile from "@/server/services/profile";
 
 const INVALID_CREDENTIALS = "Email ou senha inválidos";
 
-type LoginState = ActionState<{ email: string }>;
-
-export async function loginAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  const raw = formToObject(formData);
-  const data = { email: raw.email ?? "" };
-  const parsed = loginSchema.safeParse(raw);
-  if (!parsed.success) return { ok: false, message: INVALID_CREDENTIALS, data };
+export async function loginAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = loginSchema.safeParse(formToObject(formData));
+  if (!parsed.success) return { ok: false, message: INVALID_CREDENTIALS };
   try {
     await auth.api.signInEmail({ body: parsed.data, headers: await headers() });
   } catch (error) {
     if (isAPIError(error)) {
-      if (error.status === "TOO_MANY_REQUESTS") return { ok: false, message: LOCKED_MESSAGE, data };
-      if (error.status === "FORBIDDEN") return { ok: false, message: ACCESS_DISABLED_MESSAGE, data };
-      return { ok: false, message: INVALID_CREDENTIALS, data };
+      if (error.status === "TOO_MANY_REQUESTS") return { ok: false, message: LOCKED_MESSAGE };
+      if (error.status === "FORBIDDEN") return { ok: false, message: ACCESS_DISABLED_MESSAGE };
+      return { ok: false, message: INVALID_CREDENTIALS };
     }
     return toActionError(error);
   }

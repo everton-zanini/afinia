@@ -9,6 +9,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
+  // `next dev` compila rotas sob demanda; o primeiro acesso a cada rota pode levar alguns segundos.
+  timeout: 90_000,
+  expect: { timeout: 20_000 },
   reporter: [["list"]],
   globalSetup: "./e2e/global-setup.ts",
   use: {
@@ -21,7 +24,8 @@ export default defineConfig({
     { name: "mobile-360", use: { ...devices["Pixel 5"], viewport: { width: 360, height: 780 } } },
   ],
   webServer: {
-    command: process.env.E2E_SERVER === "start" ? `npx next start -p ${PORT}` : `npx next dev -p ${PORT}`,
+    // Padrão: build de produção (`npm run e2e` faz o build antes). E2E_SERVER=dev usa o servidor de desenvolvimento.
+    command: process.env.E2E_SERVER === "dev" ? `npx next dev -p ${PORT}` : `npx next start -p ${PORT}`,
     url: `${baseURL}/login`,
     reuseExistingServer: false,
     timeout: 180_000,
