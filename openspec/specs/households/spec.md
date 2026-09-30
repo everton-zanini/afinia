@@ -46,3 +46,10 @@ Os dois membros ativos de um casal SHALL ver os mesmos dados financeiros do casa
 - **GIVEN** Ana e Beto, membros do mesmo casal
 - **WHEN** Ana cria um registro financeiro
 - **THEN** Beto também o vê, identificado como criado por Ana
+
+### Requirement: Casal criado com categorias sugeridas
+A criação de um casal (pelo administrador ou pelo bootstrap) SHALL incluir, na mesma operação atômica, as categorias sugeridas do plano de contas.
+
+#### Scenario: Bootstrap do casal do administrador
+- **WHEN** o bootstrap cria o casal do administrador
+- **THEN** o casal já possui as categorias sugeridas
