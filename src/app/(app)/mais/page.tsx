@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { KeyRound, LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { KeyRound, LogOut, ShieldCheck, Tags, UserRound, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { MenuList } from "@/components/menu-list";
 import { logoutAction } from "@/server/actions/auth";
@@ -13,6 +13,27 @@ export default async function MorePage() {
     <>
       <PageHeader title="Mais" description={`${user.name} · ${user.email}`} />
       <div className="grid gap-6">
+        <section aria-labelledby="financas" className="grid gap-2">
+          <h2 id="financas" className="px-1 text-sm font-semibold text-muted-foreground">
+            Finanças do casal
+          </h2>
+          <MenuList
+            items={[
+              {
+                href: "/mais/categorias",
+                label: "Categorias",
+                description: "Plano de contas: para que serve cada valor",
+                icon: Tags,
+              },
+              {
+                href: "/mais/contas",
+                label: "Contas",
+                description: "Onde o dinheiro está: banco, dinheiro, reserva",
+                icon: Wallet,
+              },
+            ]}
+          />
+        </section>
         <section aria-labelledby="conta" className="grid gap-2">
           <h2 id="conta" className="px-1 text-sm font-semibold text-muted-foreground">
             Sua conta

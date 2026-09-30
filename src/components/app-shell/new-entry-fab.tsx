@@ -1,7 +1,15 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Plus } from "lucide-react";
 
+// Oculto nas telas de formulário, onde o botão de salvar ocupa o mesmo espaço.
+const HIDDEN = /\/(novo|nova|editar)$|^\/mais\/(categorias|contas)\/[^/]+$/;
+
 export function NewEntryFab() {
+  const pathname = usePathname();
+  if (HIDDEN.test(pathname)) return null;
   return (
     <Link
       href="/lancamentos/novo"

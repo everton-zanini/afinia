@@ -96,6 +96,11 @@
     @apply bg-background text-foreground;
     overflow-x: hidden;
   }
+  /* Grids sem colunas explícitas: trilha única que encolhe (evita que textos "nowrap"
+     alarguem a página além da tela). Utilitários grid-cols-* continuam prevalecendo. */
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-ring;
   }

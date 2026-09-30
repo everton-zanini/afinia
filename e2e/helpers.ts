@@ -14,8 +14,16 @@ export async function loginOk(page: Page, email: string, password: string) {
 }
 
 export async function expectNoHorizontalScroll(page: Page) {
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  );
-  expect(overflow, "página não deve ter rolagem horizontal").toBeLessThanOrEqual(0);
+  const result = await page.evaluate(() => {
+    const width = document.documentElement.clientWidth;
+    const overflow = document.documentElement.scrollWidth - width;
+    const offenders = overflow > 0
+      ? [...document.querySelectorAll("body *")]
+          .filter((el) => el.getBoundingClientRect().width > width - 32 + 1)
+          .slice(-5)
+          .map((el) => `${el.tagName.toLowerCase()}[${Math.round(el.getBoundingClientRect().width)}].${String(el.className).slice(0, 50)}`)
+      : [];
+    return { overflow, offenders };
+  });
+  expect(result.overflow, `página não deve ter rolagem horizontal: ${result.offenders.join(" | ")}`).toBeLessThanOrEqual(0);
 }
