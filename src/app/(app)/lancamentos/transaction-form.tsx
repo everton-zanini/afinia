@@ -130,7 +130,7 @@ export function TransactionForm({
       ]);
 
   return (
-    <ActionForm action={action} className="grid gap-4">
+    <ActionForm action={action} className="grid gap-4" offlineMessage="Sem conexão. O lançamento não foi salvo.">
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       <input type="hidden" name="status" value={paid ? "EFFECTIVE" : "PENDING"} />
       <input type="hidden" name="dueDate" value={dueDate} />

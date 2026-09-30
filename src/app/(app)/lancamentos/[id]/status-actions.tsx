@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { markEffectiveAction, markPendingAction } from "@/server/actions/finance";
+import { ensureOnline } from "@/components/pwa/ensure-online";
 
 export function StatusActions({
   id,
@@ -23,6 +24,7 @@ export function StatusActions({
   const verb = kind === "INCOME" ? "recebido" : kind === "TRANSFER" ? "feita" : "pago";
 
   const run = (fn: () => Promise<{ ok: boolean; message?: string }>) =>
+    ensureOnline() &&
     startTransition(async () => {
       try {
         const r = await fn();

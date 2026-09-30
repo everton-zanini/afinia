@@ -2,6 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import type { ActionState } from "@/server/action-result";
+import { ensureOnline } from "@/components/pwa/ensure-online";
 import { CopyPlus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ActionForm, FieldError, SubmitButton } from "@/components/form";
@@ -76,6 +77,7 @@ export function CopyPreviousButton({ month }: { month: string }) {
       variant="outline"
       disabled={pending}
       onClick={() =>
+        ensureOnline() &&
         startTransition(async () => {
           try {
             const r = await copyPreviousBudgetAction(month);

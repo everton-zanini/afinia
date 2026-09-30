@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import type { ActionState } from "@/server/action-result";
+import { ensureOnline } from "@/components/pwa/ensure-online";
 
 /** Botão que pede confirmação e executa uma Server Action, informando o resultado. */
 export function ConfirmAction({
@@ -38,6 +39,7 @@ export function ConfirmAction({
 }) {
   const [pending, startTransition] = useTransition();
   const run = () =>
+    ensureOnline() &&
     startTransition(async () => {
       try {
         const result = await action();

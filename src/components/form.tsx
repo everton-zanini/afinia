@@ -6,6 +6,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   useTransition,
   type ComponentProps,
   type ReactNode,
@@ -13,6 +14,7 @@ import {
 import { useFormStatus } from "react-dom";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ensureOnline } from "@/components/pwa/ensure-online";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,14 +78,17 @@ export function ActionForm({
   action,
   resetOnSuccess,
   state,
+  offlineMessage = "Sem conexão. Nada foi salvo.",
   children,
   ...props
 }: Omit<ComponentProps<"form">, "action" | "onSubmit"> & {
   action: (formData: FormData) => void;
   resetOnSuccess?: boolean;
   state?: { ok: boolean };
+  offlineMessage?: string;
 }) {
   const [pending, startTransition] = useTransition();
+  const [offlineError, setOfflineError] = useState(false);
   const ref = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (resetOnSuccess && state?.ok) ref.current?.reset();
@@ -96,11 +101,18 @@ export function ActionForm({
       onSubmit={(e) => {
         e.preventDefault();
         if (pending) return;
+        // Sem conexão não enviamos nada: nunca simulamos um salvamento.
+        if (!ensureOnline(offlineMessage)) {
+          setOfflineError(true);
+          return;
+        }
+        setOfflineError(false);
         const formData = new FormData(e.currentTarget);
         startTransition(() => action(formData));
       }}
     >
       <PendingContext.Provider value={pending}>{children}</PendingContext.Provider>
+      {offlineError && <FormMessage ok={false} message={offlineMessage} />}
     </form>
   );
 }

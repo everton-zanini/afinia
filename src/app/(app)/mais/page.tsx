@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { KeyRound, LogOut, ShieldCheck, Tags, UserRound, Wallet } from "lucide-react";
+import { KeyRound, LogOut, ShieldCheck, Smartphone, Tags, UserRound, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { MenuList } from "@/components/menu-list";
 import { logoutAction } from "@/server/actions/auth";
@@ -42,6 +42,7 @@ export default async function MorePage() {
             items={[
               { href: "/mais/perfil", label: "Perfil", description: "Nome e email", icon: UserRound },
               { href: "/mais/senha", label: "Senha", description: "Alterar sua senha", icon: KeyRound },
+              { href: "/mais/instalar", label: "Instalar o app", description: "Tela inicial do Android ou iPhone", icon: Smartphone },
             ]}
           />
         </section>
