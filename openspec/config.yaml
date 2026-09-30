@@ -1,0 +1,16 @@
+schema: spec-driven
+
+context: |
+  Afinia — gestão financeira para casais ("Duas pessoas. Planos em comum.").
+  Idioma do produto e dos artefatos: português brasileiro. Moeda BRL. Fuso America/Sao_Paulo.
+  Stack: Next.js (App Router, TypeScript), Prisma ORM + PostgreSQL (Docker local; gerenciado em produção),
+  Better Auth (email/senha), Tailwind CSS + shadcn/ui, lucide-react, Recharts, Zod, Vitest, Playwright.
+  Deploy alvo: Vercel (serverless). Cada casal (household) é um tenant isolado.
+  Dinheiro sempre em centavos inteiros; datas de calendário como YYYY-MM-DD.
+  Requisitos normativos usam SHALL/MUST; cenários usam GIVEN/WHEN/THEN.
+
+rules:
+  specs:
+    - Escrever requisitos em português, mantendo as palavras normativas SHALL/MUST.
+  tasks:
+    - Cada tarefa deve indicar como é verificada.
