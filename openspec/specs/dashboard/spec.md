@@ -6,7 +6,21 @@ Tela inicial que responde em poucos segundos à situação financeira atual do c
 ## Requirements
 
 ### Requirement: Resumo do mês
-O Início SHALL exibir o disponível para uso geral (saldo realizado de contas bancárias, dinheiro e reservas ativas, sem benefícios), o saldo em benefícios separado e, quando exibido, o total consolidado com sua composição. SHALL exibir também as receitas realizadas (com receitas em dinheiro e créditos de benefício identificados separadamente), as despesas realizadas e o resultado (receitas − despesas) do mês corrente. Previsões (pendências) SHALL aparecer identificadas como "previsto", separadas dos valores realizados.
+O Início SHALL exibir, separadamente:
+- o disponível para uso geral (saldo realizado de contas bancárias, dinheiro e reservas ativas, sem benefícios);
+- o saldo em benefícios;
+- quando exibido, o total consolidado com sua composição;
+- as dívidas de cartão (saldo devedor das faturas com compras confirmadas).
+
+O limite de crédito MUST NOT ser apresentado como saldo, patrimônio ou dinheiro disponível.
+
+O Início SHALL exibir também, para o mês corrente:
+- as receitas realizadas, com receitas em dinheiro e créditos de benefício identificados;
+- os gastos realizados: despesas comuns efetivadas + parcelas de cartão cuja fatura vence no mês, com a parte do cartão identificada;
+- o resultado (receitas − gastos);
+- os pagamentos de fatura do mês como saída de caixa identificada, sem somá-los aos gastos.
+
+Previsões (pendências e cobranças recorrentes no cartão ainda não confirmadas) SHALL aparecer identificadas como "previsto", separadas dos valores realizados.
 
 #### Scenario: Fixture de março
 - **GIVEN** a fixture conhecida e o mês de março de 2026
@@ -22,6 +36,11 @@ O Início SHALL exibir o disponível para uso geral (saldo realizado de contas b
 - **GIVEN** salário de R$ 5.000,00 e crédito de vale-alimentação de R$ 800,00 efetivados no mês
 - **WHEN** o Início é exibido
 - **THEN** "Entrou" mostra R$ 5.800,00 com a composição R$ 5.000,00 em dinheiro e R$ 800,00 em benefícios
+
+#### Scenario: Cartão no resumo
+- **GIVEN** em abril: despesa comum efetivada de R$ 1.000,00, parcela de cartão de R$ 400,00 em fatura que vence em abril, pagamento dessa fatura de R$ 400,00, conta corrente com R$ 3.000,00 após o pagamento e limite do cartão de R$ 5.000,00 com R$ 800,00 ainda devidos em faturas futuras
+- **WHEN** o Início de abril é exibido
+- **THEN** gastos mostram R$ 1.400,00 (R$ 400,00 no cartão), "Pagamentos de fatura" mostra R$ 400,00 sem somar aos gastos, dívidas de cartão mostram R$ 800,00, o disponível para uso geral é R$ 3.000,00 e o limite não aparece como saldo
 
 ### Requirement: Comparação com o mês anterior
 O sistema SHALL comparar receitas, despesas e resultado com o mês anterior, exibindo a variação em reais e em percentual. Quando o valor do mês anterior for zero, o percentual MUST NOT ser calculado e SHALL aparecer "sem base de comparação".
