@@ -17,7 +17,7 @@ export async function loadFormOptions(ctx: HouseholdContext, keep: { categoryId?
   const keepAccounts = new Set(keep.accountIds?.filter(Boolean) as string[]);
   return {
     categories: categories.filter((c) => !c.archived || c.id === keep.categoryId),
-    accounts: accounts.filter((a) => !a.archived || keepAccounts.has(a.id)).map((a) => ({ id: a.id, name: a.name })),
+    accounts: accounts.filter((a) => !a.archived || keepAccounts.has(a.id)).map((a) => ({ id: a.id, name: a.name, benefit: a.kind === "BENEFIT" })),
     members: ctx.members.map((m) => ({ memberId: m.memberId, name: m.name })),
     suggestedCategoryIds: suggestions.categoryIds,
     suggestedAccountIds: suggestions.accountIds,

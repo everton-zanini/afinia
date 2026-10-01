@@ -14,7 +14,9 @@ test.beforeEach(async ({ page }) => {
 
 test("início mostra o saldo total reconciliado com a fixture", async ({ page }) => {
   await page.goto("/inicio");
-  await expect(page.getByRole("region", { name: "Saldo total" })).toContainText("R$ 13.106,85");
+  // Sem benefícios, o disponível para uso geral é o saldo total da fixture.
+  await expect(page.getByRole("region", { name: "Disponível para uso geral" })).toContainText("R$ 13.106,85");
+  await expect(page.getByRole("region", { name: "Em benefícios" })).toHaveCount(0);
   await expectNoHorizontalScroll(page);
   await shot(page, "inicio");
 });

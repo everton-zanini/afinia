@@ -17,7 +17,7 @@ import { saveTransactionAction } from "@/server/actions/finance";
 type Kind = "EXPENSE" | "INCOME" | "TRANSFER";
 
 export type FormCategory = { id: string; name: string; kind: "INCOME" | "EXPENSE"; parentId: string | null; color: string; icon: string };
-export type FormAccount = { id: string; name: string };
+export type FormAccount = { id: string; name: string; benefit?: boolean };
 export type FormMember = { memberId: string; name: string };
 
 export type TransactionInitial = {
@@ -106,8 +106,10 @@ export function TransactionForm({
       const i = suggestedAccountIds.indexOf(id);
       return i === -1 ? Number.MAX_SAFE_INTEGER : i;
     };
-    return [...accounts].sort((a, b) => rank(a.id) - rank(b.id));
-  }, [accounts, suggestedAccountIds]);
+    // Benefícios não participam de transferências (nem como origem nem como destino).
+    const eligible = kind === "TRANSFER" ? accounts.filter((a) => !a.benefit) : accounts;
+    return [...eligible].sort((a, b) => rank(a.id) - rank(b.id));
+  }, [accounts, suggestedAccountIds, kind]);
 
   const parsedAmount = parseBRL(amount);
   // Recorrência: a data principal é a primeira ocorrência (prevista); a efetivação, se houver,
@@ -192,6 +194,9 @@ export function TransactionForm({
           onChange={(k) => {
             setKind(k);
             setCategoryId("");
+            if (k === "TRANSFER" && accounts.find((a) => a.id === accountId)?.benefit) {
+              setAccountId(accounts.find((a) => !a.benefit)?.id ?? "");
+            }
           }}
           options={KIND_OPTIONS}
         />
@@ -298,9 +303,9 @@ export function TransactionForm({
         {kind === "TRANSFER" && (
           <fieldset className="grid gap-2">
             <legend className="mb-1 text-sm font-medium">Para qual conta</legend>
-            {accounts.length < 2 ? (
+            {orderedAccounts.length < 2 ? (
               <p className="text-sm text-muted-foreground">
-                Cadastre outra conta para transferir.{" "}
+                Transferências usam contas bancárias, dinheiro ou reservas; benefícios não permitem transferência ou saque. Cadastre outra conta para transferir.{" "}
                 <Link href="/mais/contas/nova" className="font-medium text-primary underline">Nova conta</Link>
               </p>
             ) : (

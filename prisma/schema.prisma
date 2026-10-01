@@ -171,6 +171,17 @@ enum AccountKind {
   CHECKING
   CASH
   RESERVE
+  // Cartão pré-pago (vale-alimentação, refeição, combustível): sem fatura nem transferências.
+  BENEFIT
+}
+
+// Finalidade informativa do benefício (não bloqueia lançamentos).
+enum BenefitPurpose {
+  FOOD
+  MEAL
+  MOBILITY
+  FLEXIBLE
+  OTHER
 }
 
 // Conta financeira: onde o dinheiro está. O saldo inicial é posição de abertura, não receita.
@@ -179,6 +190,8 @@ model FinancialAccount {
   householdId         String
   name                String
   kind                AccountKind
+  // Obrigatória só para BENEFIT (CHECK na migration `benefit_accounts`).
+  benefitPurpose      BenefitPurpose?
   openingBalanceCents Int
   openingDate         DateTime        @db.Date
   archivedAt          DateTime?

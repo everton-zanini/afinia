@@ -78,7 +78,7 @@ export function IncomeExpenseBars({
   data,
   label,
 }: {
-  data: { label: string; Receitas: number; Despesas: number }[];
+  data: { label: string; Receitas: number; "Créditos de benefício"?: number; Despesas: number }[];
   label: string;
 }) {
   return (
@@ -91,6 +91,9 @@ export function IncomeExpenseBars({
           <Tooltip formatter={money} cursor={{ fill: "var(--muted)" }} {...tooltipStyle} />
           <Legend iconType="circle" wrapperStyle={{ fontSize: 13 }} />
           <Bar dataKey="Receitas" fill="var(--income)" radius={[4, 4, 0, 0]} maxBarSize={22} />
+          {data.some((d) => (d["Créditos de benefício"] ?? 0) > 0) && (
+            <Bar dataKey="Créditos de benefício" fill="var(--chart-2)" radius={[4, 4, 0, 0]} maxBarSize={22} />
+          )}
           <Bar dataKey="Despesas" fill="var(--expense)" radius={[4, 4, 0, 0]} maxBarSize={22} />
         </BarChart>
       </ResponsiveContainer>

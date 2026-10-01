@@ -36,6 +36,11 @@ async function main() {
   await createAccount((await getHouseholdContext(rec.id))!, {
     name: "Corrente", kind: "CHECKING", openingBalance: 500_000, openingDate: "2025-01-01",
   });
+  const ben = await createCredentialUser({ ...E2E.ben, mustChangePassword: false });
+  await household("Casa Benefício", [ben.id]);
+  await createAccount((await getHouseholdContext(ben.id))!, {
+    name: "Corrente", kind: "CHECKING", openingBalance: 100_000, openingDate: "2025-01-01",
+  });
 }
 
 main()

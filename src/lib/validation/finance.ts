@@ -52,12 +52,29 @@ export const categorySchema = z.object({
 });
 export type CategoryInput = z.infer<typeof categorySchema>;
 
-export const accountSchema = z.object({
-  name: z.string().trim().min(1, "Informe o nome").max(40, "Use até 40 caracteres"),
-  kind: z.enum(["CHECKING", "CASH", "RESERVE"], { error: "Escolha o tipo" }),
-  openingBalance: signedAmountField,
-  openingDate: isoDate,
-});
+export const BENEFIT_PURPOSES = ["FOOD", "MEAL", "MOBILITY", "FLEXIBLE", "OTHER"] as const;
+
+export const accountSchema = z
+  .object({
+    name: z.string().trim().min(1, "Informe o nome").max(40, "Use até 40 caracteres"),
+    kind: z.enum(["CHECKING", "CASH", "RESERVE", "BENEFIT"], { error: "Escolha o tipo" }),
+    benefitPurpose: z
+      .string()
+      .optional()
+      .transform((v) => (v ? v : null))
+      .pipe(z.enum(BENEFIT_PURPOSES, { error: "Escolha a finalidade" }).nullable()),
+    openingBalance: signedAmountField,
+    openingDate: isoDate,
+  })
+  .superRefine((d, ctx) => {
+    if (d.kind === "BENEFIT" && !d.benefitPurpose) {
+      ctx.addIssue({ code: "custom", path: ["benefitPurpose"], message: "Escolha a finalidade do benefício" });
+    }
+    if (d.kind === "BENEFIT" && d.openingBalance < 0) {
+      ctx.addIssue({ code: "custom", path: ["openingBalance"], message: "O saldo de um benefício não pode ser negativo" });
+    }
+  })
+  .transform((d) => ({ ...d, benefitPurpose: d.kind === "BENEFIT" ? d.benefitPurpose : null }));
 export type AccountInput = z.infer<typeof accountSchema>;
 
 export const transactionSchema = z

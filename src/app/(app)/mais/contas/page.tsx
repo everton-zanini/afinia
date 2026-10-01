@@ -6,7 +6,9 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { Money } from "@/components/money";
 import { Button } from "@/components/ui/button";
-import { ACCOUNT_KIND_LABEL, accountsWithBalances } from "@/server/finance/accounts";
+import { accountKindLabel, accountsWithBalances } from "@/server/finance/accounts";
+import { splitBalances } from "@/lib/finance/rules";
+import { BalanceSummary } from "@/components/balance-summary";
 import { requireHousehold } from "@/server/session";
 
 export const metadata: Metadata = { title: "Contas" };
@@ -16,7 +18,8 @@ export default async function AccountsPage({ searchParams }: PageProps<"/mais/co
   const { arquivadas } = await searchParams;
   const showArchived = arquivadas === "1";
   const accounts = await accountsWithBalances(ctx, { includeArchived: showArchived });
-  const total = accounts.filter((a) => !a.archived).reduce((s, a) => s + a.balanceCents, 0);
+  const split = splitBalances(accounts, new Map(accounts.map((a) => [a.id, a.balanceCents])));
+  const names = new Map(accounts.map((a) => [a.id, a.name]));
 
   return (
     <>
@@ -36,7 +39,7 @@ export default async function AccountsPage({ searchParams }: PageProps<"/mais/co
         <EmptyState
           icon={Wallet}
           title="Nenhuma conta cadastrada"
-          description="Cadastre a conta do banco, o dinheiro em mãos ou uma reserva para começar a lançar."
+          description="Cadastre a conta do banco, o dinheiro em mãos, uma reserva ou um benefício (vale) para começar a lançar."
           action={
             <Button asChild>
               <Link href="/mais/contas/nova">Cadastrar conta</Link>
@@ -45,12 +48,12 @@ export default async function AccountsPage({ searchParams }: PageProps<"/mais/co
         />
       ) : (
         <div className="grid gap-4">
-          <div className="rounded-2xl bg-primary p-4 text-primary-foreground">
-            <p className="text-sm opacity-90">Saldo realizado das contas ativas</p>
-            <p className="text-2xl font-semibold tabular">
-              <Money cents={total} />
-            </p>
-          </div>
+          <BalanceSummary
+            generalCents={split.generalCents}
+            benefitCents={split.benefitCents}
+            totalCents={split.totalCents}
+            benefits={split.benefits.map((b) => ({ ...b, name: names.get(b.id)! }))}
+          />
           <ul className="divide-y overflow-hidden rounded-2xl bg-card ring-1 ring-border">
             {accounts.map((a) => {
               const Icon = ACCOUNT_ICON[a.kind];
@@ -64,7 +67,7 @@ export default async function AccountsPage({ searchParams }: PageProps<"/mais/co
                       <span className="block truncate font-medium">{a.name}</span>
                       <span className="flex items-center gap-1 text-sm text-muted-foreground">
                         {a.archived && <Archive aria-hidden className="size-3.5" />}
-                        {a.archived ? "Arquivada" : ACCOUNT_KIND_LABEL[a.kind]}
+                        {a.archived ? "Arquivada" : accountKindLabel(a)}
                       </span>
                     </span>
                     <span className="text-right">

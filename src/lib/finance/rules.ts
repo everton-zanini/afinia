@@ -58,19 +58,76 @@ export type MonthTotals = {
   expensePending: number;
 };
 
-/** Totais do mês. Transferências nunca entram em receitas ou despesas. */
-export function monthTotals(movements: Movement[], month: ISOMonth): MonthTotals {
+/** Receitas separadas por origem: dinheiro (banco, dinheiro, reserva) × créditos de benefício. */
+export type IncomeBreakdown = {
+  incomeCash: number;
+  incomeBenefit: number;
+  incomeCashPending: number;
+  incomeBenefitPending: number;
+};
+
+/**
+ * Totais do mês. Transferências nunca entram em receitas ou despesas. Receitas em contas de
+ * benefício (`benefitAccountIds`) são créditos de benefício: entram no total e no resultado,
+ * mas aparecem separadas das receitas em dinheiro.
+ */
+export function monthTotals(movements: Movement[], month: ISOMonth): MonthTotals;
+export function monthTotals(movements: Movement[], month: ISOMonth, benefitAccountIds: Set<string>): MonthTotals & IncomeBreakdown;
+export function monthTotals(movements: Movement[], month: ISOMonth, benefitAccountIds?: Set<string>) {
   const t = { incomeRealized: 0, expenseRealized: 0, incomePending: 0, expensePending: 0 };
+  const b = { incomeCash: 0, incomeBenefit: 0, incomeCashPending: 0, incomeBenefitPending: 0 };
   for (const m of movements) {
     if (m.kind === "TRANSFER") continue;
     if (monthOf(referenceDate(m)) !== month) continue;
-    const key =
-      m.status === "EFFECTIVE"
-        ? m.kind === "INCOME" ? "incomeRealized" : "expenseRealized"
-        : m.kind === "INCOME" ? "incomePending" : "expensePending";
+    const effective = m.status === "EFFECTIVE";
+    const key = effective
+      ? m.kind === "INCOME" ? "incomeRealized" : "expenseRealized"
+      : m.kind === "INCOME" ? "incomePending" : "expensePending";
     t[key] += m.amountCents;
+    if (m.kind === "INCOME") {
+      const benefit = benefitAccountIds?.has(m.accountId) ?? false;
+      const bKey = benefit
+        ? effective ? "incomeBenefit" : "incomeBenefitPending"
+        : effective ? "incomeCash" : "incomeCashPending";
+      b[bKey] += m.amountCents;
+    }
   }
-  return { ...t, result: t.incomeRealized - t.expenseRealized };
+  const totals = { ...t, result: t.incomeRealized - t.expenseRealized };
+  return benefitAccountIds ? { ...totals, ...b } : totals;
+}
+
+export type BalanceSplit = {
+  /** Disponível para uso geral: contas bancárias, dinheiro e reservas. */
+  generalCents: number;
+  benefitCents: number;
+  totalCents: number;
+  benefits: { id: string; cents: number }[];
+};
+
+/** Separa saldos de contas ativas em uso geral e benefícios. */
+export function splitBalances(
+  accounts: { id: string; kind: string; archived?: boolean }[],
+  balances: Map<string, number>,
+): BalanceSplit {
+  let generalCents = 0;
+  let benefitCents = 0;
+  const benefits: BalanceSplit["benefits"] = [];
+  for (const a of accounts) {
+    if (a.archived) continue;
+    const cents = balances.get(a.id) ?? 0;
+    if (a.kind === "BENEFIT") {
+      benefitCents += cents;
+      benefits.push({ id: a.id, cents });
+    } else {
+      generalCents += cents;
+    }
+  }
+  return {
+    generalCents: assertCents(generalCents),
+    benefitCents: assertCents(benefitCents),
+    totalCents: assertCents(generalCents + benefitCents),
+    benefits,
+  };
 }
 
 export type BudgetAlert = "ok" | "near" | "over";

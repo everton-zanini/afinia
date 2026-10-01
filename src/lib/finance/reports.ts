@@ -22,19 +22,27 @@ export function expensesByCategory(movements: Movement[], month: ISOMonth, paren
   return { totalCents: total, slices };
 }
 
-export type MonthPoint = { month: ISOMonth; incomeCents: number; expenseCents: number };
+/** `incomeCents` é o total de receitas; `incomeBenefitCents` é a parte em créditos de benefício. */
+export type MonthPoint = { month: ISOMonth; incomeCents: number; incomeBenefitCents: number; expenseCents: number };
 
 /** Receitas e despesas realizadas dos `count` meses terminando em `endMonth` (inclui meses zerados). */
-export function monthlySeries(movements: Movement[], endMonth: ISOMonth, count = 6): MonthPoint[] {
+export function monthlySeries(
+  movements: Movement[],
+  endMonth: ISOMonth,
+  count = 6,
+  benefitAccountIds: Set<string> = new Set(),
+): MonthPoint[] {
   const months = Array.from({ length: count }, (_, i) => addMonths(endMonth, i - count + 1));
   const index = new Map(months.map((m, i) => [m, i]));
-  const points = months.map((month) => ({ month, incomeCents: 0, expenseCents: 0 }));
+  const points = months.map((month) => ({ month, incomeCents: 0, incomeBenefitCents: 0, expenseCents: 0 }));
   for (const m of movements) {
     if (m.kind === "TRANSFER" || m.status !== "EFFECTIVE") continue;
     const i = index.get(monthOf(m.effectiveDate!));
     if (i === undefined) continue;
-    if (m.kind === "INCOME") points[i].incomeCents += m.amountCents;
-    else points[i].expenseCents += m.amountCents;
+    if (m.kind === "INCOME") {
+      points[i].incomeCents += m.amountCents;
+      if (benefitAccountIds.has(m.accountId)) points[i].incomeBenefitCents += m.amountCents;
+    } else points[i].expenseCents += m.amountCents;
   }
   return points;
 }

@@ -37,6 +37,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/relatori
     return p.toString();
   };
   const txBase = `mes=${month}${data.accountId ? `&conta=${data.accountId}` : ""}`;
+  const hasBenefitIncome = data.series.some((p) => p.incomeBenefitCents > 0);
 
   return (
     <>
@@ -116,7 +117,12 @@ export default async function ReportsPage({ searchParams }: PageProps<"/relatori
               <EmptyState icon={PieIcon} title="Sem movimentações realizadas" description="Nenhuma receita ou despesa efetivada nos últimos seis meses." />
             ) : (
               <IncomeExpenseBars
-                data={data.series.map((p) => ({ label: formatMonthShort(p.month), Receitas: p.incomeCents, Despesas: p.expenseCents }))}
+                data={data.series.map((p) => ({
+                  label: formatMonthShort(p.month),
+                  Receitas: p.incomeCents - p.incomeBenefitCents,
+                  "Créditos de benefício": p.incomeBenefitCents,
+                  Despesas: p.expenseCents,
+                }))}
                 label="Gráfico de barras de receitas e despesas dos últimos seis meses; valores na tabela abaixo."
               />
             )}
@@ -127,6 +133,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/relatori
                   <tr className="text-left text-xs text-muted-foreground">
                     <th scope="col" className="py-2 font-medium">Mês</th>
                     <th scope="col" className="py-2 text-right font-medium">Receitas</th>
+                    {hasBenefitIncome && <th scope="col" className="py-2 text-right font-medium">Benefícios</th>}
                     <th scope="col" className="py-2 text-right font-medium">Despesas</th>
                     <th scope="col" className="py-2 text-right font-medium">Resultado</th>
                   </tr>
@@ -139,7 +146,8 @@ export default async function ReportsPage({ searchParams }: PageProps<"/relatori
                           {formatMonthShort(p.month)}
                         </Link>
                       </th>
-                      <td className="py-2 text-right"><Money cents={p.incomeCents} tone="income" /></td>
+                      <td className="py-2 text-right"><Money cents={p.incomeCents - p.incomeBenefitCents} tone="income" /></td>
+                      {hasBenefitIncome && <td className="py-2 text-right"><Money cents={p.incomeBenefitCents} tone="income" /></td>}
                       <td className="py-2 text-right"><Money cents={p.expenseCents} tone="expense" /></td>
                       <td className="py-2 text-right font-semibold"><Money cents={p.incomeCents - p.expenseCents} /></td>
                     </tr>
@@ -153,6 +161,9 @@ export default async function ReportsPage({ searchParams }: PageProps<"/relatori
         {tab === "saldo" && (
           <section aria-labelledby="t-saldo" className="grid gap-4 rounded-2xl bg-card p-4 ring-1 ring-border">
             <h2 id="t-saldo" className="font-semibold">Evolução do saldo realizado</h2>
+            {!data.accountId && data.accounts.length > 1 && (
+              <p className="-mt-2 text-sm text-muted-foreground">Todas as contas, incluindo benefícios. Use o filtro de conta para ver uma só.</p>
+            )}
             <dl className="grid grid-cols-2 gap-3">
               <div>
                 <dt className="text-xs text-muted-foreground">Saldo no início do mês</dt>

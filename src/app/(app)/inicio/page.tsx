@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, ChevronRight, Lightbulb, Minus, Wallet } from "lucide-react";
 import { BudgetAlertLabel, BudgetBar } from "@/components/budget-bar";
+import { BalanceSummary } from "@/components/balance-summary";
 import { CategoryBadge } from "@/components/category-icon";
 import { EmptyState } from "@/components/empty-state";
 import { Money } from "@/components/money";
@@ -56,13 +57,13 @@ export default async function HomePage() {
         <h1 className="text-2xl font-semibold tracking-tight first-letter:uppercase">{formatMonthLong(month)}</h1>
       </header>
 
-      <section aria-label="Saldo total" className="rounded-3xl bg-primary p-5 text-primary-foreground shadow-sm">
-        <p className="text-sm opacity-90">Quanto temos (saldo realizado)</p>
-        <p className="mt-1 text-3xl font-semibold tabular">{formatBRL(d.totalBalanceCents)}</p>
-        <Link href="/mais/contas" className="mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium underline-offset-4 hover:underline">
-          <Wallet aria-hidden className="size-4" /> Ver contas
-        </Link>
-      </section>
+      <BalanceSummary
+        generalCents={d.generalBalanceCents}
+        benefitCents={d.benefitBalanceCents}
+        totalCents={d.totalBalanceCents}
+        benefits={d.benefits}
+        showAccountsLink
+      />
 
       {!d.hasAccounts ? (
         <EmptyState
@@ -79,6 +80,11 @@ export default async function HomePage() {
               <div className="grid gap-1 rounded-2xl bg-card p-4 ring-1 ring-border">
                 <p className="text-xs font-medium text-muted-foreground">Entrou</p>
                 <Money cents={d.current.incomeRealized} tone="income" className="text-xl font-semibold" />
+                {d.current.incomeBenefit > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    <Money cents={d.current.incomeCash} /> em dinheiro + <Money cents={d.current.incomeBenefit} /> em benefícios
+                  </p>
+                )}
                 <Delta c={d.comparison.income} goodWhenUp />
               </div>
               <div className="grid gap-1 rounded-2xl bg-card p-4 ring-1 ring-border">

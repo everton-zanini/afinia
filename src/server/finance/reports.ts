@@ -1,7 +1,7 @@
 import { db } from "@/server/db";
 import type { HouseholdContext } from "@/server/households/context";
 import { addMonths, monthRange, toDbDate, type ISODate, type ISOMonth } from "@/lib/dates";
-import { accountBalances, monthTotals } from "@/lib/finance/rules";
+import { accountBalances, monthTotals, splitBalances } from "@/lib/finance/rules";
 import { balanceEvolution, buildInsights, compare, expensesByCategory, monthlySeries, upcoming } from "@/lib/finance/reports";
 import { movementSelect, toMovement } from "./common";
 import { listAccounts } from "./accounts";
@@ -42,9 +42,11 @@ export async function dashboard(ctx: HouseholdContext, month: ISOMonth, today: I
   ]);
   const active = accounts.filter((a) => !a.archived);
   const balances = accountBalances(accounts, movements.filter((m) => m.status === "EFFECTIVE"));
-  const totalBalanceCents = active.reduce((s, a) => s + (balances.get(a.id) ?? 0), 0);
+  const split = splitBalances(accounts, balances);
+  const benefitIds = new Set(accounts.filter((a) => a.kind === "BENEFIT").map((a) => a.id));
+  const names = new Map(accounts.map((a) => [a.id, a]));
 
-  const current = monthTotals(movements, month);
+  const current = monthTotals(movements, month, benefitIds);
   const previous = monthTotals(movements, addMonths(month, -1));
   const byCategory = expensesByCategory(movements, month, parents);
   const due = upcoming(pendingRows, today);
@@ -53,7 +55,15 @@ export async function dashboard(ctx: HouseholdContext, month: ISOMonth, today: I
   return {
     hasAccounts: active.length > 0,
     hasTransactions: movements.length > 0,
-    totalBalanceCents,
+    /** Consolidado (uso geral + benefícios), sempre exibido com a composição. */
+    totalBalanceCents: split.totalCents,
+    generalBalanceCents: split.generalCents,
+    benefitBalanceCents: split.benefitCents,
+    benefits: split.benefits.map((b) => ({
+      ...b,
+      name: names.get(b.id)!.name,
+      purpose: names.get(b.id)!.benefitPurpose,
+    })),
     current,
     comparison: {
       income: compare(current.incomeRealized, previous.incomeRealized),
@@ -93,7 +103,7 @@ export async function reports(ctx: HouseholdContext, opts: { month: ISOMonth; ac
         return { ...s, name: c?.name ?? "Sem nome", color: c?.color ?? "#5f6b6a", icon: c?.icon ?? "tag" };
       }),
     },
-    series: monthlySeries(own, opts.month, 6),
+    series: monthlySeries(own, opts.month, 6, new Set(accountsAll.filter((a) => a.kind === "BENEFIT").map((a) => a.id))),
     evolution,
   };
 }

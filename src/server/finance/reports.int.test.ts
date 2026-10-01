@@ -22,7 +22,9 @@ describe("relatórios reconciliados com a fixture persistida", () => {
   it("dashboard de março", async () => {
     const d = await dashboard(a, "2026-03", "2026-03-26");
     expect(d.totalBalanceCents).toBe(FIXTURE_EXPECTED.totalBalance);
-    expect(d.current).toEqual(FIXTURE_EXPECTED.march);
+    expect(d.current).toMatchObject({ ...FIXTURE_EXPECTED.march, incomeCash: 500_000, incomeBenefit: 0 });
+    expect(d.generalBalanceCents).toBe(FIXTURE_EXPECTED.totalBalance);
+    expect(d.benefitBalanceCents).toBe(0);
     expect(d.comparison.income).toMatchObject({ deltaCents: 0, percent: 0 });
     expect(d.comparison.expense).toMatchObject({ deltaCents: 238_285 - 30_000 });
     expect(d.overdue.map((t) => t.description)).toEqual(["Freela"]);
@@ -37,7 +39,7 @@ describe("relatórios reconciliados com a fixture persistida", () => {
       ["Moradia", 180_000, 76],
       ["Alimentação", 58_285, 24],
     ]);
-    expect(r.series.at(-1)).toEqual({ month: "2026-03", incomeCents: 500_000, expenseCents: 238_285 });
+    expect(r.series.at(-1)).toEqual({ month: "2026-03", incomeCents: 500_000, incomeBenefitCents: 0, expenseCents: 238_285 });
     expect(r.evolution.openingCents).toBe(1_070_000);
     expect(r.evolution.closingCents).toBe(1_331_715);
   });

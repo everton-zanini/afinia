@@ -6,30 +6,51 @@ import { accountBalances } from "@/lib/finance/rules";
 import type { AccountInput } from "@/lib/validation/finance";
 import { movementSelect, toMovement } from "./common";
 
-export type AccountKind = "CHECKING" | "CASH" | "RESERVE";
+export type AccountKind = "CHECKING" | "CASH" | "RESERVE" | "BENEFIT";
+export type BenefitPurpose = "FOOD" | "MEAL" | "MOBILITY" | "FLEXIBLE" | "OTHER";
 
 export const ACCOUNT_KIND_LABEL: Record<AccountKind, string> = {
   CHECKING: "Conta bancária",
   CASH: "Dinheiro",
   RESERVE: "Reserva",
+  BENEFIT: "Benefício",
 };
+
+export const BENEFIT_PURPOSE_LABEL: Record<BenefitPurpose, string> = {
+  FOOD: "Alimentação",
+  MEAL: "Refeição",
+  MOBILITY: "Mobilidade/combustível",
+  FLEXIBLE: "Flexível",
+  OTHER: "Outros",
+};
+
+export const BENEFIT_TRANSFER_MESSAGE = "Contas de benefício não permitem transferência ou saque";
+
+/** "Conta bancária" ou "Benefício · Refeição". */
+export function accountKindLabel(a: { kind: AccountKind; benefitPurpose: BenefitPurpose | null }) {
+  return a.kind === "BENEFIT" && a.benefitPurpose
+    ? `${ACCOUNT_KIND_LABEL.BENEFIT} · ${BENEFIT_PURPOSE_LABEL[a.benefitPurpose]}`
+    : ACCOUNT_KIND_LABEL[a.kind];
+}
 
 export type AccountDTO = {
   id: string;
   name: string;
   kind: AccountKind;
+  benefitPurpose: BenefitPurpose | null;
   openingBalanceCents: number;
   openingDate: ISODate;
   archived: boolean;
 };
 
-const select = { id: true, name: true, kind: true, openingBalanceCents: true, openingDate: true, archivedAt: true } as const;
+const select = { id: true, name: true, kind: true, benefitPurpose: true, openingBalanceCents: true, openingDate: true, archivedAt: true } as const;
 
-function toDTO(a: { id: string; name: string; kind: AccountKind; openingBalanceCents: number; openingDate: Date; archivedAt: Date | null }): AccountDTO {
+function toDTO(a: { id: string; name: string; kind: AccountKind; benefitPurpose: BenefitPurpose | null; openingBalanceCents: number; openingDate: Date; archivedAt: Date | null }): AccountDTO {
   return {
     id: a.id,
     name: a.name,
     kind: a.kind,
+    benefitPurpose: a.benefitPurpose,
     openingBalanceCents: a.openingBalanceCents,
     openingDate: fromDbDate(a.openingDate),
     archived: !!a.archivedAt,
@@ -94,12 +115,16 @@ async function earliestEffectiveDate(ctx: HouseholdContext, accountId: string) {
   return first?.effectiveDate ? fromDbDate(first.effectiveDate) : null;
 }
 
-export async function createAccount(ctx: HouseholdContext, input: AccountInput) {
+/** Entrada dos serviços: finalidade opcional (só benefícios a têm). */
+export type AccountData = Omit<AccountInput, "benefitPurpose"> & { benefitPurpose?: BenefitPurpose | null };
+
+export async function createAccount(ctx: HouseholdContext, input: AccountData) {
   const a = await db.financialAccount.create({
     data: {
       householdId: ctx.householdId,
       name: input.name,
       kind: input.kind,
+      benefitPurpose: input.kind === "BENEFIT" ? (input.benefitPurpose ?? null) : null,
       openingBalanceCents: input.openingBalance,
       openingDate: toDbDate(input.openingDate),
     },
@@ -108,8 +133,19 @@ export async function createAccount(ctx: HouseholdContext, input: AccountInput) 
   return toDTO(a);
 }
 
-export async function updateAccount(ctx: HouseholdContext, id: string, input: AccountInput) {
-  await getAccount(ctx, id);
+export async function updateAccount(ctx: HouseholdContext, id: string, input: AccountData) {
+  const current = await getAccount(ctx, id);
+  if (input.kind === "BENEFIT" && current.kind !== "BENEFIT") {
+    const transfers = await db.transaction.count({
+      where: { householdId: ctx.householdId, kind: "TRANSFER", OR: [{ accountId: id }, { toAccountId: id }] },
+    });
+    const transferRules = await db.recurringRule.count({
+      where: { toAccountId: { not: null }, OR: [{ accountId: id }, { toAccountId: id }], series: { householdId: ctx.householdId } },
+    });
+    if (transfers + transferRules > 0) {
+      throw new DomainError("Contas com transferências não podem virar benefício", "kind");
+    }
+  }
   const earliest = await earliestEffectiveDate(ctx, id);
   if (earliest && input.openingDate > earliest) {
     throw new DomainError(
@@ -122,6 +158,7 @@ export async function updateAccount(ctx: HouseholdContext, id: string, input: Ac
     data: {
       name: input.name,
       kind: input.kind,
+      benefitPurpose: input.kind === "BENEFIT" ? (input.benefitPurpose ?? null) : null,
       openingBalanceCents: input.openingBalance,
       openingDate: toDbDate(input.openingDate),
     },

@@ -109,12 +109,15 @@ export async function validateReferences(ctx: HouseholdContext, input: Transacti
   const accountIds = [input.accountId, input.toAccountId].filter((v): v is string => !!v);
   const accounts = await db.financialAccount.findMany({
     where: { householdId: ctx.householdId, id: { in: accountIds } },
-    select: { id: true, name: true, openingDate: true, archivedAt: true },
+    select: { id: true, name: true, openingDate: true, archivedAt: true, kind: true },
   });
   const byId = new Map(accounts.map((a) => [a.id, a]));
   for (const accountId of accountIds) {
     const a = byId.get(accountId);
     if (!a) throw new NotFoundError();
+    if (input.kind === "TRANSFER" && a.kind === "BENEFIT") {
+      throw new DomainError("Contas de benefício não permitem transferência ou saque", "toAccountId");
+    }
     const keeping = existing && (existing.accountId === accountId || existing.toAccountId === accountId);
     if (a.archivedAt && !keeping) throw new DomainError(`A conta "${a.name}" está arquivada`, "accountId");
     if (input.effectiveDate && input.effectiveDate < fromDbDate(a.openingDate)) {

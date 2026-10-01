@@ -31,10 +31,10 @@ describe("série de seis meses", () => {
   it("inclui meses zerados e usa a data de efetivação", () => {
     const s = monthlySeries(movements, "2026-04");
     expect(s.map((p) => p.month)).toEqual(["2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04"]);
-    expect(s[3]).toEqual({ month: "2026-02", incomeCents: 500_000, expenseCents: 30_000 });
-    expect(s[4]).toEqual({ month: "2026-03", incomeCents: 500_000, expenseCents: 238_285 });
-    expect(s[5]).toEqual({ month: "2026-04", incomeCents: 0, expenseCents: 21_030 });
-    expect(s[0]).toEqual({ month: "2025-11", incomeCents: 0, expenseCents: 0 });
+    expect(s[3]).toEqual({ month: "2026-02", incomeCents: 500_000, incomeBenefitCents: 0, expenseCents: 30_000 });
+    expect(s[4]).toEqual({ month: "2026-03", incomeCents: 500_000, incomeBenefitCents: 0, expenseCents: 238_285 });
+    expect(s[5]).toEqual({ month: "2026-04", incomeCents: 0, incomeBenefitCents: 0, expenseCents: 21_030 });
+    expect(s[0]).toEqual({ month: "2025-11", incomeCents: 0, incomeBenefitCents: 0, expenseCents: 0 });
   });
 });
 
