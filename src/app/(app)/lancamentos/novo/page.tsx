@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { randomUUID } from "node:crypto";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { todayISO } from "@/lib/dates";
-import { NotFoundError } from "@/server/errors";
+import { DomainError } from "@/server/errors";
 import { duplicateDraft } from "@/server/finance/transactions";
 import { requireHousehold } from "@/server/session";
 import { loadFormOptions } from "../form-data";
@@ -35,7 +35,8 @@ export default async function NewTransactionPage({ searchParams }: PageProps<"/l
       initial = { ...d, effectiveDate: null };
       duplicated = true;
     } catch (e) {
-      if (!(e instanceof NotFoundError)) throw e;
+      // Inexistente ou não duplicável (ex.: pagamento de fatura): abre o formulário em branco.
+      if (!(e instanceof DomainError)) throw e;
     }
   }
   const options = await loadFormOptions(ctx);

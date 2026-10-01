@@ -1,6 +1,6 @@
 import { monthOf } from "@/lib/dates";
 import { assertCents } from "@/lib/money";
-import type { AccountOpening, ISODate, ISOMonth, Movement } from "./types";
+import { isCardMovement, type AccountOpening, type ISODate, type ISOMonth, type Movement } from "./types";
 
 /**
  * Data que posiciona o lançamento no tempo: efetivados pela data de efetivação,
@@ -22,6 +22,9 @@ export function effectOnAccount(m: Movement, accountId: string): number {
       if (m.accountId === accountId) return -m.amountCents;
       if (m.toAccountId === accountId) return m.amountCents;
       return 0;
+    case "CARD_PAYMENT":
+      // Pagamento de fatura reduz a conta de origem na data real do pagamento.
+      return m.accountId === accountId ? -m.amountCents : 0;
   }
 }
 
@@ -58,12 +61,19 @@ export type MonthTotals = {
   expensePending: number;
 };
 
-/** Receitas separadas por origem: dinheiro (banco, dinheiro, reserva) × créditos de benefício. */
+/**
+ * Detalhamento do mês: receitas em dinheiro × créditos de benefício; parte dos gastos feita no
+ * cartão (parcelas pelo vencimento da fatura; previsões como pendente); pagamentos de fatura
+ * (saída de caixa, nunca somados aos gastos).
+ */
 export type IncomeBreakdown = {
   incomeCash: number;
   incomeBenefit: number;
   incomeCashPending: number;
   incomeBenefitPending: number;
+  expenseCard: number;
+  expenseCardPending: number;
+  cardPayments: number;
 };
 
 /**
@@ -75,11 +85,24 @@ export function monthTotals(movements: Movement[], month: ISOMonth): MonthTotals
 export function monthTotals(movements: Movement[], month: ISOMonth, benefitAccountIds: Set<string>): MonthTotals & IncomeBreakdown;
 export function monthTotals(movements: Movement[], month: ISOMonth, benefitAccountIds?: Set<string>) {
   const t = { incomeRealized: 0, expenseRealized: 0, incomePending: 0, expensePending: 0 };
-  const b = { incomeCash: 0, incomeBenefit: 0, incomeCashPending: 0, incomeBenefitPending: 0 };
+  const b = {
+    incomeCash: 0,
+    incomeBenefit: 0,
+    incomeCashPending: 0,
+    incomeBenefitPending: 0,
+    expenseCard: 0,
+    expenseCardPending: 0,
+    cardPayments: 0,
+  };
   for (const m of movements) {
     if (m.kind === "TRANSFER") continue;
     if (monthOf(referenceDate(m)) !== month) continue;
+    if (m.kind === "CARD_PAYMENT") {
+      if (m.status === "EFFECTIVE") b.cardPayments += m.amountCents;
+      continue;
+    }
     const effective = m.status === "EFFECTIVE";
+    if (m.kind === "EXPENSE" && isCardMovement(m)) b[effective ? "expenseCard" : "expenseCardPending"] += m.amountCents;
     const key = effective
       ? m.kind === "INCOME" ? "incomeRealized" : "expenseRealized"
       : m.kind === "INCOME" ? "incomePending" : "expensePending";

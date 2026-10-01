@@ -57,6 +57,9 @@ describe("créditos de benefício", () => {
       incomeBenefit: 80_000,
       incomeCashPending: 0,
       incomeBenefitPending: 10_000,
+      expenseCard: 0,
+      expenseCardPending: 0,
+      cardPayments: 0,
     });
   });
 

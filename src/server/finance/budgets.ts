@@ -5,23 +5,28 @@ import { addMonths, monthRange, toDbDate, type ISOMonth } from "@/lib/dates";
 import { budgetProgress, type BudgetRow } from "@/lib/finance/rules";
 import { movementSelect, toMovement } from "./common";
 import { parentMap } from "./categories";
+import { cardMovements } from "./cards";
 
 /** Despesas relevantes para o mês: efetivadas pela data de efetivação, pendentes pela prevista. */
 export async function monthExpenseMovements(ctx: HouseholdContext, month: ISOMonth) {
   const { from, to } = monthRange(month);
   const range = { gte: toDbDate(from), lte: toDbDate(to) };
-  const rows = await db.transaction.findMany({
-    where: {
-      householdId: ctx.householdId,
-      kind: "EXPENSE",
-      OR: [
-        { status: "EFFECTIVE", effectiveDate: range },
-        { status: "PENDING", dueDate: range },
-      ],
-    },
-    select: movementSelect,
-  });
-  return rows.map(toMovement);
+  const [rows, card] = await Promise.all([
+    db.transaction.findMany({
+      where: {
+        householdId: ctx.householdId,
+        kind: "EXPENSE",
+        OR: [
+          { status: "EFFECTIVE", effectiveDate: range },
+          { status: "PENDING", dueDate: range },
+        ],
+      },
+      select: movementSelect,
+    }),
+    // Parcelas confirmadas (realizado) e previsões (pendente) pelo vencimento da fatura.
+    cardMovements(ctx, { from, to }),
+  ]);
+  return [...rows.map(toMovement), ...card];
 }
 
 export type BudgetView = BudgetRow & { name: string; color: string; icon: string; archived: boolean };

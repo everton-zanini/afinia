@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeftRight, Copy, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Copy, CreditCard, Pencil, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { CategoryBadge } from "@/components/category-icon";
 import { ConfirmAction } from "@/components/confirm-action";
@@ -20,8 +20,8 @@ import { SeriesBadge } from "@/components/series-badge";
 
 export const metadata: Metadata = { title: "Lançamento" };
 
-const KIND_LABEL = { INCOME: "Receita", EXPENSE: "Despesa", TRANSFER: "Transferência" } as const;
-const TONE = { INCOME: "income", EXPENSE: "expense", TRANSFER: "transfer" } as const;
+const KIND_LABEL = { INCOME: "Receita", EXPENSE: "Despesa", TRANSFER: "Transferência", CARD_PAYMENT: "Pagamento de fatura" } as const;
+const TONE = { INCOME: "income", EXPENSE: "expense", TRANSFER: "transfer", CARD_PAYMENT: "expense" } as const;
 const timestamp = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -54,7 +54,7 @@ export default async function TransactionPage({ params, searchParams }: PageProp
               <CategoryBadge icon={t.category.icon} color={t.category.color} size="lg" />
             ) : (
               <span className="flex size-12 items-center justify-center rounded-full bg-transfer-soft text-transfer">
-                <ArrowLeftRight aria-hidden className="size-6" />
+                {t.kind === "CARD_PAYMENT" ? <CreditCard aria-hidden className="size-6" /> : <ArrowLeftRight aria-hidden className="size-6" />}
               </span>
             )}
           </div>
@@ -73,13 +73,20 @@ export default async function TransactionPage({ params, searchParams }: PageProp
           )}
         </section>
 
-        <StatusActions id={t.id} status={t.status} kind={t.kind} today={today} />
+        {t.kind !== "CARD_PAYMENT" && <StatusActions id={t.id} status={t.status} kind={t.kind} today={today} />}
 
         <dl className="divide-y rounded-2xl bg-card px-4 ring-1 ring-border">
           {t.category && (
             <Row label="Categoria">{t.category.parentName ? `${t.category.parentName} › ${t.category.name}` : t.category.name}</Row>
           )}
-          <Row label={t.kind === "TRANSFER" ? "De" : "Conta"}>{t.account.name}</Row>
+          {t.invoice && (
+            <Row label="Fatura">
+              <Link href={`/cartoes/${t.invoice.cardId}?fatura=${t.invoice.id}`} className="text-primary underline-offset-4 hover:underline">
+                {t.invoice.cardName}
+              </Link>
+            </Row>
+          )}
+          <Row label={t.kind === "TRANSFER" ? "De" : t.kind === "CARD_PAYMENT" ? "Paga com" : "Conta"}>{t.account.name}</Row>
           {t.toAccount && <Row label="Para">{t.toAccount.name}</Row>}
           <Row label={t.kind === "INCOME" ? "Data prevista" : "Vencimento"}>{formatDate(t.dueDate)}</Row>
           <Row label="Efetivado em">{t.effectiveDate ? formatDate(t.effectiveDate) : "Ainda não"}</Row>
@@ -92,6 +99,19 @@ export default async function TransactionPage({ params, searchParams }: PageProp
           {t.notes && <Row label="Observação"><span className="whitespace-pre-wrap font-normal">{t.notes}</span></Row>}
         </dl>
 
+        {t.kind === "CARD_PAYMENT" && t.invoice ? (
+          <div className="grid gap-2">
+            <p className="text-sm text-muted-foreground">
+              Pagamentos de fatura não são editados, duplicados nem excluídos aqui: para corrigir, desfaça o pagamento na fatura do cartão.
+            </p>
+            <Button asChild>
+              <Link href={`/cartoes/${t.invoice.cardId}?fatura=${t.invoice.id}`}>
+                <CreditCard aria-hidden />
+                Ver fatura
+              </Link>
+            </Button>
+          </div>
+        ) : (
         <div className="grid grid-cols-2 gap-2">
           <Button asChild variant="outline">
             <Link href={`/lancamentos/${t.id}/editar`}>
@@ -122,6 +142,7 @@ export default async function TransactionPage({ params, searchParams }: PageProp
           </ConfirmAction>
           )}
         </div>
+        )}
       </div>
     </>
   );

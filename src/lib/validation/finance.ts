@@ -135,6 +135,13 @@ export const recurrenceSchema = z
       .optional()
       .transform((v) => (v ? v : null))
       .refine((v) => v === null || isISODate(v), "Informe uma data válida"),
+    /** Destino em cartão (só despesas): as ocorrências viram previsões de cobrança. */
+    cardId: z
+      .string()
+      .trim()
+      .max(64)
+      .optional()
+      .transform((v) => (v ? v : null)),
   })
   .transform((d) => ({
     ...d,

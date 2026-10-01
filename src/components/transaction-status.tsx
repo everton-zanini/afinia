@@ -10,7 +10,7 @@ export function TransactionStatus({
   className,
 }: {
   status: "PENDING" | "EFFECTIVE";
-  kind: "INCOME" | "EXPENSE" | "TRANSFER";
+  kind: "INCOME" | "EXPENSE" | "TRANSFER" | "CARD_PAYMENT";
   dueDate: string;
   today: string;
   className?: string;

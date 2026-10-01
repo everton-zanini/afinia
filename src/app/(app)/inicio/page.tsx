@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, ChevronRight, Lightbulb, Minus, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, ChevronRight, CreditCard, Lightbulb, Minus, Wallet } from "lucide-react";
 import { BudgetAlertLabel, BudgetBar } from "@/components/budget-bar";
 import { BalanceSummary } from "@/components/balance-summary";
 import { CategoryBadge } from "@/components/category-icon";
@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Money } from "@/components/money";
 import { TransactionRow } from "@/components/transaction-row";
 import { Button } from "@/components/ui/button";
-import { currentMonth, formatMonthLong, todayISO } from "@/lib/dates";
+import { currentMonth, formatDate, formatMonthLong, todayISO } from "@/lib/dates";
 import type { Comparison } from "@/lib/finance/reports";
 import { formatBRL } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -90,6 +90,11 @@ export default async function HomePage() {
               <div className="grid gap-1 rounded-2xl bg-card p-4 ring-1 ring-border">
                 <p className="text-xs font-medium text-muted-foreground">Saiu</p>
                 <Money cents={d.current.expenseRealized} tone="expense" className="text-xl font-semibold" />
+                {d.current.expenseCard > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    <Money cents={d.current.expenseCard} /> no cartão (faturas que vencem no mês)
+                  </p>
+                )}
                 <Delta c={d.comparison.expense} goodWhenUp={false} />
               </div>
             </div>
@@ -99,6 +104,11 @@ export default async function HomePage() {
                 <Money cents={d.current.result} className={cn("text-xl font-semibold", d.current.result < 0 ? "text-expense" : "text-income")} />
               </div>
               <Delta c={d.comparison.result} goodWhenUp />
+              {d.current.cardPayments > 0 && (
+                <p className="mt-1 border-t pt-2 text-sm text-muted-foreground">
+                  Pagamentos de fatura no mês: <Money cents={d.current.cardPayments} className="font-semibold text-foreground" />. É saída de caixa e não entra nos gastos acima.
+                </p>
+              )}
               {(d.current.incomePending > 0 || d.current.expensePending > 0) && (
                 <p className="mt-1 border-t pt-2 text-sm text-muted-foreground">
                   Previsto até o fim do mês: <Money cents={d.current.incomePending} tone="income" /> a receber e{" "}
@@ -107,6 +117,46 @@ export default async function HomePage() {
               )}
             </div>
           </section>
+
+          {d.cards.length > 0 && (
+            <section aria-labelledby="cartoes" className="grid gap-2">
+              <div className="flex items-center justify-between px-1">
+                <h2 id="cartoes" className="flex items-center gap-1.5 font-semibold">
+                  <CreditCard aria-hidden className="size-4 text-primary" /> Cartões de crédito
+                </h2>
+                <Link href="/cartoes" className="flex min-h-11 items-center gap-0.5 text-sm font-medium text-primary">
+                  Cartões <ChevronRight aria-hidden className="size-4" />
+                </Link>
+              </div>
+              <div className="grid gap-2 rounded-2xl bg-card p-4 ring-1 ring-border">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-sm font-medium">Dívidas de cartão</p>
+                  <Money cents={d.cardDebtCents} tone={d.cardDebtCents > 0 ? "expense" : "neutral"} className="text-xl font-semibold" />
+                </div>
+                <p className="text-xs text-muted-foreground">Saldo devedor das faturas com compras confirmadas. O limite do cartão não é saldo nem dinheiro disponível.</p>
+                <ul className="divide-y">
+                  {d.cards.map((c) => (
+                    <li key={c.id}>
+                      <Link href={`/cartoes/${c.id}`} className="flex min-h-14 items-center gap-3 py-2">
+                        <span aria-hidden className="size-3 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{c.name}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {c.nextDue
+                              ? `${c.nextDue.overdue ? "Atrasada · venceu" : "Vence"} em ${formatDate(c.nextDue.dueDate)}`
+                              : "Sem fatura a pagar"}
+                          </span>
+                        </span>
+                        <span className="text-right text-sm font-semibold">
+                          <Money cents={c.nextDue?.remainingCents ?? 0} />
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          )}
 
           {(d.overdue.length > 0 || d.next.length > 0) && (
             <section aria-labelledby="vencimentos" className="grid gap-2">

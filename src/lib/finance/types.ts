@@ -1,6 +1,13 @@
 import type { ISODate, ISOMonth } from "@/lib/dates";
 
-export type MovementKind = "INCOME" | "EXPENSE" | "TRANSFER";
+/** CARD_PAYMENT: pagamento de fatura — saída de caixa, nunca despesa por categoria. */
+export type MovementKind = "INCOME" | "EXPENSE" | "TRANSFER" | "CARD_PAYMENT";
+
+/** Gastos de cartão entram nas regras como movimentos com accountId "card:<id>" (não são contas). */
+export const CARD_MOVEMENT_PREFIX = "card:";
+export function isCardMovement(m: { accountId: string }) {
+  return m.accountId.startsWith(CARD_MOVEMENT_PREFIX);
+}
 export type MovementStatus = "PENDING" | "EFFECTIVE";
 
 /** Forma mínima de um lançamento para as regras financeiras puras. */

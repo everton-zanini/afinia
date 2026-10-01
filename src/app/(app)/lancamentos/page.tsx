@@ -19,9 +19,14 @@ import { parseListParams, toQuery } from "./params";
 export const metadata: Metadata = { title: "Lançamentos" };
 
 function summarize(rows: TransactionDTO[]) {
-  const s = { income: 0, expense: 0, incomePending: 0, expensePending: 0 };
+  const s = { income: 0, expense: 0, incomePending: 0, expensePending: 0, cardPayments: 0 };
   for (const t of rows) {
     if (t.kind === "TRANSFER") continue;
+    // Pagamento de fatura é saída de caixa, nunca receita nem despesa.
+    if (t.kind === "CARD_PAYMENT") {
+      s.cardPayments += t.amountCents;
+      continue;
+    }
     if (t.status === "EFFECTIVE") s[t.kind === "INCOME" ? "income" : "expense"] += t.amountCents;
     else s[t.kind === "INCOME" ? "incomePending" : "expensePending"] += t.amountCents;
   }
@@ -136,6 +141,9 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/lan
             <Money cents={summary.expense} tone="expense" className="text-lg font-semibold" />
             {summary.expensePending > 0 && (
               <p className="text-xs text-muted-foreground">+ <Money cents={summary.expensePending} /> previsto</p>
+            )}
+            {summary.cardPayments > 0 && (
+              <p className="text-xs text-muted-foreground"><Money cents={summary.cardPayments} /> em pagamentos de fatura (fora das despesas)</p>
             )}
           </div>
         </section>

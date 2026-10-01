@@ -36,7 +36,7 @@ export function monthlySeries(
   const index = new Map(months.map((m, i) => [m, i]));
   const points = months.map((month) => ({ month, incomeCents: 0, incomeBenefitCents: 0, expenseCents: 0 }));
   for (const m of movements) {
-    if (m.kind === "TRANSFER" || m.status !== "EFFECTIVE") continue;
+    if (m.kind === "TRANSFER" || m.kind === "CARD_PAYMENT" || m.status !== "EFFECTIVE") continue;
     const i = index.get(monthOf(m.effectiveDate!));
     if (i === undefined) continue;
     if (m.kind === "INCOME") {

@@ -8,6 +8,7 @@ import { listAccounts } from "./accounts";
 import { parentMap } from "./categories";
 import { monthBudget } from "./budgets";
 import { listTransactions } from "./transactions";
+import { cardDebt, cardMovements } from "./cards";
 
 /** Efetivados até o fim do mês + pendentes, opcionalmente só de uma conta (origem ou destino). */
 async function loadMovements(ctx: HouseholdContext, until: ISODate | null, accountId?: string) {
@@ -32,16 +33,20 @@ async function categoryInfo(ctx: HouseholdContext) {
 
 /** O saldo total considera todos os efetivados — o mesmo número da página de Contas. */
 export async function dashboard(ctx: HouseholdContext, month: ISOMonth, today: ISODate) {
-  const [accounts, movements, parents, categories, budget, pendingRows] = await Promise.all([
+  const [accounts, cashMovements, spending, parents, categories, budget, pendingRows, cardsView] = await Promise.all([
     listAccounts(ctx, { includeArchived: true }),
     loadMovements(ctx, null),
+    cardMovements(ctx),
     parentMap(ctx),
     categoryInfo(ctx),
     monthBudget(ctx, month),
     listTransactions(ctx, { status: "PENDING" }, { limit: 200 }),
+    cardDebt(ctx, today),
   ]);
+  // Caixa: só lançamentos (compras no cartão não mexem nas contas). Gastos: lançamentos + cartão.
+  const movements = [...cashMovements, ...spending];
   const active = accounts.filter((a) => !a.archived);
-  const balances = accountBalances(accounts, movements.filter((m) => m.status === "EFFECTIVE"));
+  const balances = accountBalances(accounts, cashMovements.filter((m) => m.status === "EFFECTIVE"));
   const split = splitBalances(accounts, balances);
   const benefitIds = new Set(accounts.filter((a) => a.kind === "BENEFIT").map((a) => a.id));
   const names = new Map(accounts.map((a) => [a.id, a]));
@@ -54,7 +59,7 @@ export async function dashboard(ctx: HouseholdContext, month: ISOMonth, today: I
 
   return {
     hasAccounts: active.length > 0,
-    hasTransactions: movements.length > 0,
+    hasTransactions: cashMovements.length > 0 || spending.length > 0,
     /** Consolidado (uso geral + benefícios), sempre exibido com a composição. */
     totalBalanceCents: split.totalCents,
     generalBalanceCents: split.generalCents,
@@ -65,6 +70,17 @@ export async function dashboard(ctx: HouseholdContext, month: ISOMonth, today: I
       purpose: names.get(b.id)!.benefitPurpose,
     })),
     current,
+    /** Dívidas de cartão (saldo devedor das faturas) — nunca somadas ao saldo nem ao limite. */
+    cardDebtCents: cardsView.debtCents,
+    cards: cardsView.cards
+      .filter((c) => !c.archived || c.limit.committedCents > 0)
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        color: c.color,
+        committedCents: c.limit.committedCents,
+        nextDue: c.nextDue ? { dueDate: c.nextDue.dueDate, remainingCents: c.nextDue.status.remainingCents, overdue: c.nextDue.status.overdue } : null,
+      })),
     comparison: {
       income: compare(current.incomeRealized, previous.incomeRealized),
       expense: compare(current.expenseRealized, previous.expenseRealized),
@@ -82,11 +98,14 @@ export async function reports(ctx: HouseholdContext, opts: { month: ISOMonth; ac
   const { to } = monthRange(opts.month);
   const accountsAll = await listAccounts(ctx, { includeArchived: true });
   const accountId = opts.accountId && accountsAll.some((a) => a.id === opts.accountId) ? opts.accountId : undefined;
-  const [movements, parents, categories] = await Promise.all([
+  const [cashMovements, spending, parents, categories] = await Promise.all([
     loadMovements(ctx, to, accountId),
+    // Com filtro por conta, gastos de cartão não são atribuídos à conta.
+    accountId ? Promise.resolve([]) : cardMovements(ctx, { to }),
     parentMap(ctx),
     categoryInfo(ctx),
   ]);
+  const movements = [...cashMovements, ...spending];
   const scopeAccounts = accountId ? accountsAll.filter((a) => a.id === accountId) : accountsAll;
   // Receitas/despesas de uma conta: apenas lançamentos cuja conta é ela (transferências já são ignoradas).
   const own = accountId ? movements.filter((m) => m.kind === "TRANSFER" || m.accountId === accountId) : movements;

@@ -2,7 +2,7 @@ import { centsToInput } from "@/lib/money";
 import { formatDate } from "@/lib/dates";
 import type { TransactionDTO } from "./transactions";
 
-const KIND_LABEL = { INCOME: "Receita", EXPENSE: "Despesa", TRANSFER: "Transferência" } as const;
+const KIND_LABEL = { INCOME: "Receita", EXPENSE: "Despesa", TRANSFER: "Transferência", CARD_PAYMENT: "Pagamento de fatura" } as const;
 const STATUS_LABEL = { PENDING: "Pendente", EFFECTIVE: "Efetivado" } as const;
 
 /** Neutraliza fórmulas de planilha e escapa aspas/separadores. */

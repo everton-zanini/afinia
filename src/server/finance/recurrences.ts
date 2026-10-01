@@ -16,6 +16,7 @@ import {
 import type { RecurrenceInput, TransactionInput } from "@/lib/validation/finance";
 import { isUniqueViolation } from "./common";
 import { dataFrom, validateReferences } from "./transactions";
+import { ensureInvoiceFor, lockCard } from "./cards";
 
 // Recorrências: definição (série + regras por posição + exceções) separada dos lançamentos.
 // A geração materializa posições ausentes como lançamentos PENDENTES e nunca altera existentes.
@@ -28,6 +29,7 @@ type SeriesRow = {
   id: string;
   householdId: string;
   kind: "INCOME" | "EXPENSE" | "TRANSFER";
+  cardId: string | null;
   frequency: "WEEKLY" | "MONTHLY" | "YEARLY";
   startDate: Date;
   endMode: "COUNT" | "UNTIL" | "NONE";
@@ -84,6 +86,39 @@ async function generateSeries(seriesId: string, horizonDate: ISODate) {
       const positions = positionsToGenerate(schedule, horizonDate, s.generatedThroughIndex + 1).slice(0, BATCH);
       if (positions.length === 0) return true;
       const skip = new Set(s.exceptions.map((e) => e.occurrenceIndex));
+      if (s.cardId) {
+        // Cartão arquivado interrompe a geração; ao reativar, ela continua de onde parou.
+        const card = await tx.creditCard.findUniqueOrThrow({ where: { id: s.cardId } });
+        if (card.archivedAt) return true;
+        await lockCard(tx, card.id);
+        const forecasts = [];
+        for (const i of positions.filter((p) => !skip.has(p))) {
+          const r = ruleFor(s.rules, i);
+          const date = scheduledDate(schedule.startDate, schedule.frequency, i);
+          const invoice = await ensureInvoiceFor(tx, card, date);
+          forecasts.push({
+            householdId: s.householdId,
+            cardId: card.id,
+            status: "FORECAST" as const,
+            description: r.description,
+            totalCents: r.amountCents,
+            purchaseDate: toDbDate(date),
+            categoryId: r.categoryId!,
+            responsibleMemberId: r.responsibleMemberId,
+            notes: r.notes,
+            installmentCount: 1,
+            invoiceId: invoice.id,
+            createdById: s.createdById,
+            idempotencyKey: occurrenceKey(s.id, i),
+            seriesId: s.id,
+            occurrenceIndex: i,
+          });
+        }
+        // Posições já confirmadas nunca voltam: a unicidade (seriesId, occurrenceIndex) garante.
+        if (forecasts.length) await tx.cardPurchase.createMany({ data: forecasts, skipDuplicates: true });
+        await tx.recurringSeries.update({ where: { id: s.id }, data: { generatedThroughIndex: positions.at(-1)! } });
+        return positions.length < BATCH;
+      }
       const data = positions
         .filter((i) => !skip.has(i))
         .map((i) => {
@@ -95,7 +130,7 @@ async function generateSeries(seriesId: string, horizonDate: ISODate) {
             description: r.description,
             amountCents: r.amountCents,
             categoryId: r.categoryId,
-            accountId: r.accountId,
+            accountId: r.accountId!,
             toAccountId: r.toAccountId,
             responsibleMemberId: r.responsibleMemberId,
             notes: r.notes,
@@ -126,9 +161,11 @@ export async function ensureGenerated(ctx: HouseholdContext, today: ISODate = to
     select: {
       id: true, startDate: true, frequency: true, endMode: true, occurrenceCount: true,
       untilDate: true, stopBeforeIndex: true, stoppedOn: true, generatedThroughIndex: true,
+      card: { select: { archivedAt: true } },
     },
   });
   for (const s of series) {
+    if (s.card?.archivedAt) continue;
     const schedule = scheduleOf(s);
     const next = s.generatedThroughIndex + 1;
     if (next > lastLogicalIndex(schedule)) continue;
@@ -144,7 +181,7 @@ export async function ensureGenerated(ctx: HouseholdContext, today: ISODate = to
 export async function createSeries(
   ctx: HouseholdContext,
   input: TransactionInput,
-  rec: RecurrenceInput,
+  rec: Omit<RecurrenceInput, "cardId"> & { cardId?: string | null },
   today: ISODate = todayISO(),
 ) {
   const existing = await db.recurringSeries.findUnique({
@@ -158,7 +195,8 @@ export async function createSeries(
   if (input.status === "EFFECTIVE" && input.effectiveDate! > today) {
     throw new DomainError("A data de pagamento não pode ser futura", "effectiveDate");
   }
-  await validateReferences(ctx, input, null);
+  if (rec.cardId) await validateCardSeries(ctx, input, rec.cardId);
+  else await validateReferences(ctx, input, null);
 
   let id: string;
   try {
@@ -175,12 +213,27 @@ export async function createSeries(
   return { id, created: true };
 }
 
-async function createSeriesRows(ctx: HouseholdContext, input: TransactionInput, rec: RecurrenceInput) {
+/** Série no cartão: só despesa, cartão ativo do casal, categoria de despesa; nunca nasce efetivada. */
+async function validateCardSeries(ctx: HouseholdContext, input: TransactionInput, cardId: string) {
+  if (input.kind !== "EXPENSE") throw new DomainError("Somente despesas recorrentes podem ser cobradas no cartão", "kind");
+  if (input.status === "EFFECTIVE") throw new DomainError("Cobranças no cartão são previstas aqui e confirmadas na fatura", "status");
+  const card = await db.creditCard.findFirst({ where: { id: cardId, householdId: ctx.householdId }, select: { archivedAt: true } });
+  if (!card) throw new NotFoundError();
+  if (card.archivedAt) throw new DomainError("Este cartão está arquivado", "cardId");
+  const category = await db.category.findFirst({ where: { id: input.categoryId ?? "", householdId: ctx.householdId }, select: { kind: true, archivedAt: true } });
+  if (!category) throw new NotFoundError();
+  if (category.kind !== "EXPENSE") throw new DomainError("A categoria não corresponde ao tipo do lançamento", "categoryId");
+  if (category.archivedAt) throw new DomainError("Esta categoria está arquivada", "categoryId");
+  if (input.responsibleMemberId && !ctx.members.some((m) => m.memberId === input.responsibleMemberId)) throw new NotFoundError();
+}
+
+async function createSeriesRows(ctx: HouseholdContext, input: TransactionInput, rec: Omit<RecurrenceInput, "cardId"> & { cardId?: string | null }) {
   return db.$transaction(async (tx) => {
     const s = await tx.recurringSeries.create({
       data: {
         householdId: ctx.householdId,
         kind: input.kind,
+        cardId: rec.cardId ?? null,
         frequency: rec.frequency,
         startDate: toDbDate(input.dueDate),
         endMode: rec.endMode,
@@ -188,7 +241,8 @@ async function createSeriesRows(ctx: HouseholdContext, input: TransactionInput, 
         untilDate: rec.untilDate ? toDbDate(rec.untilDate) : null,
         createdById: ctx.userId,
         idempotencyKey: input.idempotencyKey,
-        rules: { create: { fromIndex: 0, ...ruleData(input) } },
+        // Série com destino em cartão não tem conta nas regras (o destino é o cartão da série).
+        rules: { create: { fromIndex: 0, ...ruleData(input), ...(rec.cardId ? { accountId: null, toAccountId: null } : {}) } },
       },
       select: { id: true },
     });
@@ -319,7 +373,15 @@ async function loadSeries(ctx: HouseholdContext, seriesId: string) {
 
 /** Prévia do encerramento: pendentes com data prevista ≥ data de encerramento. */
 export async function previewEnd(ctx: HouseholdContext, seriesId: string, on: ISODate = todayISO()) {
-  await loadSeries(ctx, seriesId);
+  const series = await loadSeries(ctx, seriesId);
+  if (series.cardId) {
+    const f = await db.cardPurchase.aggregate({
+      where: { householdId: ctx.householdId, seriesId, status: "FORECAST", purchaseDate: { gte: toDbDate(on) } },
+      _count: { _all: true },
+      _sum: { totalCents: true },
+    });
+    return { count: f._count._all, totalCents: f._sum.totalCents ?? 0 };
+  }
   const agg = await db.transaction.aggregate({
     where: { householdId: ctx.householdId, seriesId, status: "PENDING", dueDate: { gte: toDbDate(on) } },
     _count: { _all: true },
@@ -338,11 +400,17 @@ export async function endSeries(ctx: HouseholdContext, seriesId: string, on: ISO
     await tx.transaction.deleteMany({
       where: { householdId: ctx.householdId, seriesId, status: "PENDING", dueDate: { gte: toDbDate(on) } },
     });
+    // Compras confirmadas permanecem; só as previsões de cobrança saem.
+    await tx.cardPurchase.deleteMany({
+      where: { householdId: ctx.householdId, seriesId, status: "FORECAST", purchaseDate: { gte: toDbDate(on) } },
+    });
   });
 }
 
 export type SeriesView = {
   id: string;
+  cardId: string | null;
+  cardName: string | null;
   kind: SeriesRow["kind"];
   frequency: SeriesRow["frequency"];
   endMode: SeriesRow["endMode"];
@@ -376,15 +444,28 @@ export async function listSeries(ctx: HouseholdContext): Promise<SeriesView[]> {
       },
       exceptions: { select: { occurrenceIndex: true } },
       occurrences: { select: { occurrenceIndex: true, status: true, amountCents: true, dueDate: true } },
+      card: { select: { name: true, archivedAt: true } },
+      cardForecasts: { select: { occurrenceIndex: true, status: true, totalCents: true, purchaseDate: true } },
     },
   });
   return rows.map((s) => {
     const schedule = scheduleOf(s);
     const rule = ruleFor(s.rules, Math.max(0, s.generatedThroughIndex + 1));
-    const pending = s.occurrences.filter((o) => o.status === "PENDING").map((o) => fromDbDate(o.dueDate)).sort();
+    // Em série no cartão as ocorrências são compras: previsão = pendente, confirmada = efetivada.
+    const occurrences = s.card
+      ? s.cardForecasts.map((o) => ({
+          occurrenceIndex: o.occurrenceIndex,
+          status: o.status === "FORECAST" ? ("PENDING" as const) : ("EFFECTIVE" as const),
+          amountCents: o.totalCents,
+          dueDate: o.purchaseDate,
+        }))
+      : s.occurrences;
+    const pending = occurrences.filter((o) => o.status === "PENDING").map((o) => fromDbDate(o.dueDate)).sort();
     return {
       id: s.id,
-      kind: s.kind,
+      cardId: s.cardId,
+      cardName: s.card?.name ?? null,
+      kind: s.kind as SeriesRow["kind"],
       frequency: s.frequency,
       endMode: s.endMode,
       occurrenceCount: s.occurrenceCount,
@@ -392,16 +473,16 @@ export async function listSeries(ctx: HouseholdContext): Promise<SeriesView[]> {
       startDate: schedule.startDate,
       description: rule.description,
       amountCents: rule.amountCents,
-      accountName: rule.account.name,
+      accountName: s.card?.name ?? rule.account!.name,
       toAccountName: rule.toAccount?.name ?? null,
       categoryName: rule.category?.name ?? null,
       categoryColor: rule.category?.color ?? null,
       categoryIcon: rule.category?.icon ?? null,
       nextPendingDate: pending[0] ?? null,
-      usesArchived: !!(rule.account.archivedAt || rule.toAccount?.archivedAt || rule.category?.archivedAt),
+      usesArchived: !!(s.card?.archivedAt || rule.account?.archivedAt || rule.toAccount?.archivedAt || rule.category?.archivedAt),
       summary: summarize(
         schedule,
-        s.occurrences.map((o) => ({ index: o.occurrenceIndex!, status: o.status, amountCents: o.amountCents })),
+        occurrences.map((o) => ({ index: o.occurrenceIndex!, status: o.status, amountCents: o.amountCents })),
         new Set(s.exceptions.map((e) => e.occurrenceIndex)),
         s.generatedThroughIndex,
       ),

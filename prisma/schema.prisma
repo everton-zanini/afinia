@@ -28,6 +28,7 @@ model User {
   membership          HouseholdMember?
   createdTransactions Transaction[]     @relation("TransactionCreatedBy")
   createdSeries       RecurringSeries[] @relation("SeriesCreatedBy")
+  createdPurchases    CardPurchase[]    @relation("PurchaseCreatedBy")
 
   @@map("user")
 }
@@ -95,18 +96,22 @@ model RateLimit {
 
 // Invariante: todo dado financeiro pertence a exatamente um Household.
 model Household {
-  id              String             @id @default(cuid())
-  name            String
+  id               String             @id @default(cuid())
+  name             String
   // Casal desativado: dados preservados, login e sessões dos membros bloqueados.
-  active          Boolean            @default(true)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  members         HouseholdMember[]
-  categories      Category[]
-  accounts        FinancialAccount[]
-  transactions    Transaction[]
-  budgets         Budget[]
-  recurringSeries RecurringSeries[]
+  active           Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  members          HouseholdMember[]
+  categories       Category[]
+  accounts         FinancialAccount[]
+  transactions     Transaction[]
+  budgets          Budget[]
+  recurringSeries  RecurringSeries[]
+  creditCards      CreditCard[]
+  cardInvoices     CardInvoice[]
+  cardPurchases    CardPurchase[]
+  cardInstallments CardInstallment[]
 
   @@map("household")
 }
@@ -114,15 +119,17 @@ model Household {
 // Invariantes: um casal por usuário (userId único); no máximo 2 membros ativos por casal
 // (garantido em src/server/households/members.ts, único ponto que cria vínculos).
 model HouseholdMember {
-  id               String          @id @default(cuid())
-  householdId      String
-  userId           String          @unique
-  active           Boolean         @default(true)
-  createdAt        DateTime        @default(now())
-  household        Household       @relation(fields: [householdId], references: [id], onDelete: Restrict)
-  user             User            @relation(fields: [userId], references: [id], onDelete: Restrict)
-  responsibleFor   Transaction[]
-  responsibleRules RecurringRule[]
+  id                   String          @id @default(cuid())
+  householdId          String
+  userId               String          @unique
+  active               Boolean         @default(true)
+  createdAt            DateTime        @default(now())
+  household            Household       @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  responsibleFor       Transaction[]
+  responsibleRules     RecurringRule[]
+  heldCards            CreditCard[]    @relation("CardHolder")
+  responsiblePurchases CardPurchase[]  @relation("PurchaseResponsible")
 
   @@index([householdId, active])
   @@map("household_member")
@@ -145,22 +152,23 @@ enum CategoryKind {
 
 // "Categorias" na interface: compõem o plano de contas (finalidade da receita/despesa).
 model Category {
-  id           String          @id @default(cuid())
-  householdId  String
-  parentId     String?
-  kind         CategoryKind
-  name         String
-  color        String
-  icon         String
-  archivedAt   DateTime?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  household    Household       @relation(fields: [householdId], references: [id], onDelete: Restrict)
-  parent       Category?       @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children     Category[]      @relation("CategoryTree")
-  transactions Transaction[]
-  budgets      Budget[]
-  rules        RecurringRule[]
+  id            String          @id @default(cuid())
+  householdId   String
+  parentId      String?
+  kind          CategoryKind
+  name          String
+  color         String
+  icon          String
+  archivedAt    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  household     Household       @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  parent        Category?       @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children      Category[]      @relation("CategoryTree")
+  transactions  Transaction[]
+  budgets       Budget[]
+  rules         RecurringRule[]
+  cardPurchases CardPurchase[]
 
   @@index([householdId, kind])
   @@index([parentId])
@@ -202,6 +210,7 @@ model FinancialAccount {
   incoming            Transaction[]   @relation("TransactionToAccount")
   ruleOutgoing        RecurringRule[] @relation("RuleAccount")
   ruleIncoming        RecurringRule[] @relation("RuleToAccount")
+  cardsPaidFrom       CreditCard[]    @relation("CardPaymentAccount")
 
   @@index([householdId])
   @@map("financial_account")
@@ -211,6 +220,8 @@ enum TransactionKind {
   INCOME
   EXPENSE
   TRANSFER
+  // Pagamento de fatura de cartão: sai da conta de origem, nunca é despesa por categoria.
+  CARD_PAYMENT
 }
 
 enum TransactionStatus {
@@ -250,9 +261,13 @@ model Transaction {
   occurrenceIndex     Int?
   seriesOverride      Boolean           @default(false)
   series              RecurringSeries?  @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  // Somente CARD_PAYMENT: fatura paga por este lançamento.
+  invoiceId           String?
+  invoice             CardInvoice?      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
 
   @@unique([householdId, idempotencyKey])
   @@unique([seriesId, occurrenceIndex])
+  @@index([invoiceId])
   @@index([householdId, effectiveDate])
   @@index([householdId, dueDate])
   @@index([householdId, accountId])
@@ -311,6 +326,10 @@ model RecurringSeries {
   stoppedOn             DateTime?            @db.Date
   // Maior posição já avaliada pela geração (otimização; a unicidade garante a correção).
   generatedThroughIndex Int                  @default(-1)
+  // Destino em cartão (só despesas; imutável). As ocorrências viram previsões de cobrança.
+  cardId                String?
+  card                  CreditCard?          @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  cardForecasts         CardPurchase[]
   createdById           String
   idempotencyKey        String
   createdAt             DateTime             @default(now())
@@ -334,14 +353,15 @@ model RecurringRule {
   description         String
   amountCents         Int
   categoryId          String?
-  accountId           String
+  // Nulo somente em séries com destino em cartão (garantido por gatilho).
+  accountId           String?
   toAccountId         String?
   responsibleMemberId String?
   notes               String?
   createdAt           DateTime          @default(now())
   series              RecurringSeries   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
   category            Category?         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  account             FinancialAccount  @relation("RuleAccount", fields: [accountId], references: [id], onDelete: Restrict)
+  account             FinancialAccount? @relation("RuleAccount", fields: [accountId], references: [id], onDelete: Restrict)
   toAccount           FinancialAccount? @relation("RuleToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
   responsibleMember   HouseholdMember?  @relation(fields: [responsibleMemberId], references: [id], onDelete: Restrict)
 
@@ -358,6 +378,121 @@ model RecurringException {
 
   @@id([seriesId, occurrenceIndex])
   @@map("recurring_exception")
+}
+
+// ---------------------------------------------------------------------------
+// Cartões de crédito (controle manual). Nenhum número completo, CVV ou credencial.
+// Invariantes no banco (migration `credit_cards`): isolamento entre casais, fatura e parcela
+// do mesmo cartão da compra, benefício nunca paga fatura, valores e dias válidos.
+// ---------------------------------------------------------------------------
+
+model CreditCard {
+  id               String            @id @default(cuid())
+  householdId      String
+  name             String
+  issuer           String?
+  lastFour         String?           @db.Char(4)
+  color            String
+  limitCents       Int
+  // Valem para faturas criadas depois de alterados; faturas gravadas mantêm suas datas.
+  closingDay       Int
+  dueDay           Int
+  // Titular informativo: os dois membros gerenciam o cartão.
+  holderMemberId   String
+  paymentAccountId String?
+  archivedAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  household        Household         @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  holder           HouseholdMember   @relation("CardHolder", fields: [holderMemberId], references: [id], onDelete: Restrict)
+  paymentAccount   FinancialAccount? @relation("CardPaymentAccount", fields: [paymentAccountId], references: [id], onDelete: Restrict)
+  invoices         CardInvoice[]
+  purchases        CardPurchase[]
+  series           RecurringSeries[]
+
+  @@index([householdId])
+  @@map("credit_card")
+}
+
+// Fatura com identidade estável e datas gravadas na criação (nunca recalculadas).
+model CardInvoice {
+  id           String            @id @default(cuid())
+  householdId  String
+  cardId       String
+  periodStart  DateTime          @db.Date
+  closingDate  DateTime          @db.Date
+  dueDate      DateTime          @db.Date
+  createdAt    DateTime          @default(now())
+  household    Household         @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  card         CreditCard        @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  installments CardInstallment[]
+  purchases    CardPurchase[]
+  payments     Transaction[]
+
+  @@unique([cardId, closingDate])
+  @@index([householdId, dueDate])
+  @@map("card_invoice")
+}
+
+enum CardPurchaseStatus {
+  // Previsão de cobrança recorrente: não afeta saldo nem limite.
+  FORECAST
+  CONFIRMED
+}
+
+// Compra original (à vista ou parcelada) ou previsão de cobrança de recorrência no cartão.
+model CardPurchase {
+  id                  String             @id @default(cuid())
+  householdId         String
+  cardId              String
+  status              CardPurchaseStatus
+  description         String
+  totalCents          Int
+  purchaseDate        DateTime           @db.Date
+  categoryId          String
+  responsibleMemberId String?
+  notes               String?
+  installmentCount    Int                @default(1)
+  // Fatura inicial (compra) ou sugerida (previsão).
+  invoiceId           String
+  createdById         String
+  idempotencyKey      String
+  seriesId            String?
+  occurrenceIndex     Int?
+  seriesOverride      Boolean            @default(false)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  household           Household          @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  card                CreditCard         @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  category            Category           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  responsibleMember   HouseholdMember?   @relation("PurchaseResponsible", fields: [responsibleMemberId], references: [id], onDelete: Restrict)
+  invoice             CardInvoice        @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  createdBy           User               @relation("PurchaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  series              RecurringSeries?   @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  installments        CardInstallment[]
+
+  @@unique([householdId, idempotencyKey])
+  @@unique([seriesId, occurrenceIndex])
+  @@index([householdId, cardId])
+  @@map("card_purchase")
+}
+
+// Parcela: posição, valor exato em centavos e fatura em que é cobrada.
+model CardInstallment {
+  id          String       @id @default(cuid())
+  householdId String
+  purchaseId  String
+  invoiceId   String
+  index       Int
+  amountCents Int
+  createdAt   DateTime     @default(now())
+  household   Household    @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  purchase    CardPurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  invoice     CardInvoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([purchaseId, index])
+  @@index([invoiceId])
+  @@map("card_installment")
 }
 
 // Limitação de tentativas de login por email (regra do Afinia).

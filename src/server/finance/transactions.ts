@@ -9,7 +9,7 @@ import { isUniqueViolation } from "./common";
 
 export type TransactionDTO = {
   id: string;
-  kind: "INCOME" | "EXPENSE" | "TRANSFER";
+  kind: "INCOME" | "EXPENSE" | "TRANSFER" | "CARD_PAYMENT";
   status: "PENDING" | "EFFECTIVE";
   description: string;
   amountCents: number;
@@ -22,6 +22,8 @@ export type TransactionDTO = {
   toAccount: { id: string; name: string } | null;
   responsible: { memberId: string; name: string } | null;
   createdBy: { id: string; name: string };
+  /** Somente pagamento de fatura: a fatura e o cartão pagos. */
+  invoice: { id: string; cardId: string; cardName: string } | null;
   createdAt: string;
   updatedAt: string;
   /** Posição na recorrência, quando for uma ocorrência. */
@@ -50,6 +52,7 @@ const detailSelect = {
   toAccount: { select: { id: true, name: true } },
   responsibleMember: { select: { id: true, user: { select: { name: true } } } },
   createdBy: { select: { id: true, name: true } },
+  invoice: { select: { id: true, card: { select: { id: true, name: true } } } },
   occurrenceIndex: true,
   seriesOverride: true,
   series: { select: { id: true, frequency: true, endMode: true, occurrenceCount: true } },
@@ -84,6 +87,7 @@ function toDTO(t: DetailRow): TransactionDTO {
     toAccount: t.toAccount,
     responsible: t.responsibleMember ? { memberId: t.responsibleMember.id, name: t.responsibleMember.user.name } : null,
     createdBy: t.createdBy,
+    invoice: t.invoice ? { id: t.invoice.id, cardId: t.invoice.card.id, cardName: t.invoice.card.name } : null,
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
     series:
@@ -97,6 +101,15 @@ function toDTO(t: DetailRow): TransactionDTO {
           }
         : null,
   };
+}
+
+export const CARD_PAYMENT_LOCKED = "Pagamentos de fatura só podem ser desfeitos na fatura do cartão";
+
+/** Pagamento de fatura nasce e morre na fatura: as operações comuns o recusam. */
+async function assertNotCardPayment(ctx: HouseholdContext, id: string) {
+  const t = await db.transaction.findFirst({ where: { id, householdId: ctx.householdId }, select: { kind: true } });
+  if (!t) throw new NotFoundError();
+  if (t.kind === "CARD_PAYMENT") throw new DomainError(CARD_PAYMENT_LOCKED);
 }
 
 type Existing = { categoryId: string | null; accountId: string; toAccountId: string | null } | null;
@@ -202,9 +215,10 @@ export async function createTransaction(ctx: HouseholdContext, input: Transactio
 export async function updateTransaction(ctx: HouseholdContext, id: string, input: TransactionInput) {
   const current = await db.transaction.findFirst({
     where: { id, householdId: ctx.householdId },
-    select: { categoryId: true, accountId: true, toAccountId: true, seriesId: true },
+    select: { categoryId: true, accountId: true, toAccountId: true, seriesId: true, kind: true },
   });
   if (!current) throw new NotFoundError();
+  if (current.kind === "CARD_PAYMENT") throw new DomainError(CARD_PAYMENT_LOCKED);
   // Ocorrências de recorrência são editadas em escopo (recurrences.updateOccurrence).
   if (current.seriesId) throw new DomainError("Escolha se a alteração vale só para este lançamento ou também para os próximos");
   await validateReferences(ctx, input, current);
@@ -213,11 +227,13 @@ export async function updateTransaction(ctx: HouseholdContext, id: string, input
 
 export async function deleteTransaction(ctx: HouseholdContext, id: string) {
   // Ocorrências de recorrência são excluídas em escopo (recurrences.deleteOccurrence).
+  await assertNotCardPayment(ctx, id);
   const { count } = await db.transaction.deleteMany({ where: { id, householdId: ctx.householdId, seriesId: null } });
   if (count === 0) throw new NotFoundError();
 }
 
 export async function markEffective(ctx: HouseholdContext, id: string, effectiveDate: ISODate = todayISO()) {
+  await assertNotCardPayment(ctx, id);
   const t = await db.transaction.findFirst({
     where: { id, householdId: ctx.householdId },
     select: { accountId: true, toAccountId: true },
@@ -239,6 +255,7 @@ export async function markEffective(ctx: HouseholdContext, id: string, effective
 }
 
 export async function markPending(ctx: HouseholdContext, id: string) {
+  await assertNotCardPayment(ctx, id);
   const { count } = await db.transaction.updateMany({
     where: { id, householdId: ctx.householdId },
     data: { status: "PENDING", effectiveDate: null },
@@ -249,6 +266,7 @@ export async function markPending(ctx: HouseholdContext, id: string) {
 /** Dados para duplicar: mesmo conteúdo, hoje como data, situação pendente. */
 export async function duplicateDraft(ctx: HouseholdContext, id: string) {
   const t = await getTransaction(ctx, id);
+  if (t.kind === "CARD_PAYMENT") throw new DomainError(CARD_PAYMENT_LOCKED);
   return {
     kind: t.kind,
     description: t.description,

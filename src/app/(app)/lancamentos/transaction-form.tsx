@@ -47,6 +47,7 @@ export function TransactionForm({
   categories,
   accounts,
   members,
+  cards = [],
   suggestedCategoryIds,
   suggestedAccountIds,
   today,
@@ -58,6 +59,8 @@ export function TransactionForm({
   categories: FormCategory[];
   accounts: FormAccount[];
   members: FormMember[];
+  /** Cartões ativos: destino de despesas recorrentes (as ocorrências viram previsões de cobrança). */
+  cards?: { id: string; name: string }[];
   suggestedCategoryIds: string[];
   suggestedAccountIds: string[];
   today: string;
@@ -80,6 +83,8 @@ export function TransactionForm({
   const [accountId, setAccountId] = useState(initial.accountId ?? accounts[0]?.id ?? "");
   const [toAccountId, setToAccountId] = useState(initial.toAccountId ?? "");
   const [paid, setPaid] = useState(initial.status === "EFFECTIVE");
+  const [destination, setDestination] = useState<"account" | "card">("account");
+  const [cardId, setCardId] = useState(cards[0]?.id ?? "");
   const [date, setDate] = useState(initial.status === "EFFECTIVE" ? initial.effectiveDate! : initial.dueDate);
   const separateDue = initial.status === "EFFECTIVE" && initial.dueDate !== initial.effectiveDate;
   const [dueOverride, setDueOverride] = useState(separateDue ? initial.dueDate : "");
@@ -115,12 +120,14 @@ export function TransactionForm({
   // Recorrência: a data principal é a primeira ocorrência (prevista); a efetivação, se houver,
   // é informada à parte e não pode ser futura.
   const repeating = canRepeat && repeat;
-  const effectiveDate = paid ? (repeating ? paidOn : date) : "";
+  const cardDest = repeating && kind === "EXPENSE" && destination === "card" && cards.length > 0;
+  const effectiveDate = paid && !cardDest ? (repeating ? paidOn : date) : "";
   const dueDate = repeating ? date : paid ? dueOverride || date : date;
+  const showPaid = paid && !cardDest;
   const paidLabel = kind === "INCOME" ? "Já foi recebido" : kind === "TRANSFER" ? "Já foi realizada" : "Já foi pago";
   const paidDateLabel = kind === "INCOME" ? "Data do recebimento" : kind === "TRANSFER" ? "Data da transferência" : "Data do pagamento";
   const dateLabel = repeating
-    ? "Primeira ocorrência"
+    ? cardDest ? "Primeira cobrança" : "Primeira ocorrência"
     : paid
       ? paidDateLabel
       : kind === "INCOME" ? "Data prevista" : "Vencimento";
@@ -151,7 +158,7 @@ export function TransactionForm({
   return (
     <ActionForm action={action} className="grid gap-4" offlineMessage="Sem conexão. O lançamento não foi salvo.">
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
-      <input type="hidden" name="status" value={paid ? "EFFECTIVE" : "PENDING"} />
+      <input type="hidden" name="status" value={paid && !cardDest ? "EFFECTIVE" : "PENDING"} />
       <input type="hidden" name="dueDate" value={dueDate} />
       <input type="hidden" name="effectiveDate" value={effectiveDate} />
       {repeating && <input type="hidden" name="repeat" value="on" />}
@@ -281,7 +288,7 @@ export function TransactionForm({
         </section>
       ) : null}
 
-      <section className="grid gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
+      <section hidden={cardDest} className="grid gap-3 rounded-2xl bg-card p-4 ring-1 ring-border">
         <fieldset className="grid gap-2">
           <legend className="mb-1 text-sm font-medium">{kind === "TRANSFER" ? "De qual conta" : kind === "INCOME" ? "Em qual conta" : "De qual conta"}</legend>
           <div className="flex flex-wrap gap-2">
@@ -334,7 +341,7 @@ export function TransactionForm({
       <section className="grid gap-4 rounded-2xl bg-card p-4 ring-1 ring-border">
         <div className="flex min-h-11 items-center justify-between gap-3">
           <Label htmlFor="paid" className="text-base">{paidLabel}</Label>
-          <Switch id="paid" checked={paid} onCheckedChange={setPaid} className="scale-125" />
+          <Switch id="paid" checked={showPaid} disabled={cardDest} onCheckedChange={setPaid} className="scale-125" />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="date">{dateLabel}</Label>
@@ -357,9 +364,10 @@ export function TransactionForm({
           </div>
           {!repeating && (e.dueDate || e.effectiveDate) && <FieldError>{e.effectiveDate ?? e.dueDate}</FieldError>}
           {repeating && e.dueDate && <FieldError>{e.dueDate}</FieldError>}
-          {!paid && <p className="text-sm text-muted-foreground">Fica como pendente: aparece nas previsões, não no saldo.</p>}
+          {!showPaid && !cardDest && <p className="text-sm text-muted-foreground">Fica como pendente: aparece nas previsões, não no saldo.</p>}
+          {cardDest && <p className="text-sm text-muted-foreground">Cada cobrança vira uma previsão na fatura do cartão. Você confirma depois, e o pagamento acontece na fatura.</p>}
         </div>
-        {repeating && paid && (
+        {repeating && showPaid && (
           <div className="grid gap-1.5">
             <Label htmlFor="paidOn">{paidDateLabel}</Label>
             <input
@@ -386,6 +394,34 @@ export function TransactionForm({
           </div>
           {repeat && (
             <>
+              {kind === "EXPENSE" && cards.length > 0 && (
+                <div className="grid gap-2">
+                  <Segmented
+                    name="destination"
+                    legend="Cobrar em"
+                    value={destination}
+                    onChange={setDestination}
+                    options={[
+                      { value: "account", label: "Conta" },
+                      { value: "card", label: "Cartão" },
+                    ]}
+                  />
+                  {destination === "card" && (
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="cardId">Cartão</Label>
+                      <NativeSelect id="cardId" name="cardId" value={cardId} onChange={(ev) => setCardId(ev.target.value)}>
+                        {cards.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </NativeSelect>
+                      <p className="text-sm text-muted-foreground">
+                        O destino é fixo: para mudar de conta para cartão (ou de cartão), encerre esta recorrência antes e crie outra, para não haver sobreposição.
+                      </p>
+                      {e.cardId && <FieldError>{e.cardId}</FieldError>}
+                    </div>
+                  )}
+                </div>
+              )}
               <Segmented
                 name="frequency"
                 legend="Frequência"
@@ -452,7 +488,7 @@ export function TransactionForm({
           <ChevronDown aria-hidden className={cn("size-5 transition-transform", advancedOpen && "rotate-180")} />
         </button>
         <div id="mais-detalhes" hidden={!advancedOpen} className="grid gap-4 px-4 pb-4">
-          {paid && !repeating && (
+          {showPaid && !repeating && (
             <div className="grid gap-1.5">
               <Label htmlFor="dueOverride">Vencimento (se diferente)</Label>
               <input

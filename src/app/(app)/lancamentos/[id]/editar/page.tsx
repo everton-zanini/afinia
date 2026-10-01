@@ -19,6 +19,8 @@ export default async function EditTransactionPage({ params }: PageProps<"/lancam
     if (e instanceof NotFoundError) notFound();
     throw e;
   });
+  // Pagamento de fatura só é desfeito na fatura: não há edição.
+  if (t.kind === "CARD_PAYMENT") notFound();
   const options = await loadFormOptions(ctx, {
     categoryId: t.category?.id,
     accountIds: [t.account.id, t.toAccount?.id ?? null],

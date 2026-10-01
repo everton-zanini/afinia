@@ -18,7 +18,8 @@ orçamento mensal, dashboard e relatórios. PWA instalável, pensado para o celu
 5. [Produção: PostgreSQL gerenciado e Vercel](#produção-postgresql-gerenciado-e-vercel)
 6. [Backup e restauração](#backup-e-restauração)
 7. [Regras importantes](#regras-importantes)
-8. [Limitações e próximos passos](#limitações-e-próximos-passos)
+8. [Cartões de crédito e faturas](#cartões-de-crédito-e-faturas)
+9. [Limitações e próximos passos](#limitações-e-próximos-passos)
 
 ## Requisitos
 
@@ -199,17 +200,65 @@ Nunca use credenciais de produção nos testes; os testes só aceitam bancos `*_
 - **Offline**: o service worker guarda só recursos públicos e estáticos; páginas, APIs e dados
   financeiros nunca vão para o cache. Sem conexão, nada é salvo.
 
+## Cartões de crédito e faturas
+
+Controle **manual** (Mais → Cartões): cadastro do cartão (nome, emissor e 4 últimos dígitos
+opcionais, cor, limite informado, dias de fechamento e vencimento, titular informativo e conta
+sugerida para pagamento), faturas com datas gravadas, compras à vista ou parceladas (1 a 48
+parcelas), pagamento de fatura e recorrências cobradas no cartão. O Afinia **nunca** guarda número
+completo, CVV, senha ou credencial, e o limite é uma estimativa: não consulta o banco.
+
+### As três visões (cada gasto é contado uma única vez)
+
+| Visão | Fonte | Fórmula |
+| --- | --- | --- |
+| **Caixa** (saldo das contas, fluxo, evolução do saldo) | lançamentos efetivados | saldo = abertura + receitas − despesas comuns − **pagamentos de fatura** ± transferências. Compras no cartão não mexem nas contas. |
+| **Gastos / orçamento** (categorias, receitas × despesas) | despesas comuns + parcelas de compras confirmadas + previsões | realizado = despesas comuns efetivadas (data de efetivação) + parcelas confirmadas pelo **mês de vencimento da fatura**; previsto = despesas pendentes + previsões de recorrência no cartão (vencimento da fatura sugerida). Pagamentos de fatura **não** entram. |
+| **Limite** (por cartão) | parcelas confirmadas e pagamentos do cartão | comprometido = Σ parcelas confirmadas (inclusive futuras) − Σ pagamentos das faturas do cartão; disponível = limite − comprometido. Previsões e saldos de contas não entram. |
+
+Dívidas de cartão no Início = soma dos saldos devedores das faturas. O limite nunca é exibido como
+saldo ou dinheiro disponível.
+
+### Faturas e parcelas
+
+- O fechamento de cada mês é o dia configurado, limitado ao último dia do mês (sem perder o dia de
+  referência nos meses seguintes). O ciclo começa no dia seguinte ao fechamento anterior e termina
+  no fechamento, inclusive. O vencimento é a primeira ocorrência do dia configurado estritamente
+  posterior ao fechamento. As datas ficam gravadas na fatura; mudar os dias do cartão vale só para
+  faturas criadas depois.
+- A fatura sugerida (pela data da compra, ou a próxima se aquela já estiver quitada) é uma
+  **previsão manual** e pode diferir da instituição: a compra pode começar em outra fatura não
+  quitada.
+- Parcelas em centavos exatos: cada uma recebe o quociente inteiro e os centavos restantes vão, um
+  a um, para as primeiras; a soma sempre fecha o total e nenhuma parcela é zero. Todas são criadas
+  no registro, inclusive além de 12 meses. Compras parceladas não são recorrências.
+- Situação da fatura calculada na consulta (sem tarefa agendada): ciclo aberto/fechado, em
+  aberto/parcial/quitada e atraso (vencimento passado com saldo devedor). Fatura sem compras nunca
+  aparece como devida ou vencida.
+- Pagamento (parcial ou total, até o saldo devedor, data não futura) é um lançamento próprio
+  "pagamento de fatura": reduz a conta de origem (nunca um benefício) e não é despesa. É atômico,
+  idempotente e seguro sob concorrência; pode ser desfeito na fatura. Juros, multas e encargos não
+  são calculados.
+- Compras sem pagamentos podem ser editadas (recalcula as parcelas), excluídas e ter parcelas
+  remanejadas entre faturas não quitadas. Com pagamento na fatura, só descrição, categoria,
+  responsável e observação mudam; para corrigir um erro de cadastro, desfaça o pagamento antes.
+- **Recorrência no cartão** (Repetir → Cobrar em → Cartão de crédito): só despesas. Gera
+  **previsões** de cobrança (não afetam saldo nem limite, entram no orçamento como previsto), que o
+  casal confirma uma única vez (revisando valor, data e fatura) ou pula. O destino é fixo: para
+  mudar de conta para cartão, encerre a série e crie outra. Cartão arquivado interrompe a geração.
+
+### Transição de faturas registradas como despesa manual
+
+Não há conversão automática. Quem registrava "Fatura do cartão" como despesa deve escolher uma
+**data de corte**: manter as despesas manuais de faturas anteriores ao corte, cadastrar no cartão
+apenas as compras de ciclos a partir do corte e **não** registrar pagamento das faturas que já
+viraram despesa manual. Assim nenhum gasto é contado duas vezes.
+
 ## Limitações e próximos passos
 
-Fora do MVP: cartões e faturas, compras parceladas no cartão, conciliação e Open Finance,
-cadastro público, recuperação de senha por email, finanças privadas por membro, notificações
-push, gravação/sincronização offline e recursos com IA.
+Fora do MVP: conciliação e Open Finance, estornos, créditos em fatura, pagamento excedente,
+juros e parcelamento de fatura, cadastro público, recuperação de senha por email, finanças privadas
+por membro, notificações push, gravação/sincronização offline e recursos com IA.
 
-Recorrências não representam compras parceladas: estas virão no módulo de cartões, vinculadas à
-compra original e às faturas. Quando houver cartões, uma recorrência cobrada no cartão deverá
-gerar uma cobrança vinculada à fatura, sem descontar diretamente uma conta bancária e sem duplicar
-a despesa no pagamento da fatura.
-
-Próximos passos sugeridos: módulo de cartões e faturas, recuperação de senha por email (com
-serviço transacional), agregações em SQL quando o histórico crescer e testes E2E em Safari/iOS
-real.
+Próximos passos sugeridos: recuperação de senha por email (com serviço transacional), agregações em
+SQL quando o histórico crescer e testes E2E em Safari/iOS real.

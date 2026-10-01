@@ -125,3 +125,20 @@ export function BalanceLine({
     </div>
   );
 }
+
+/** Compromissos por mês de vencimento das próximas faturas (a tabela textual fica fora do gráfico). */
+export function FutureInvoicesBars({ data, label }: { data: { label: string; Compromisso: number }[]; label: string }) {
+  return (
+    <div role="img" aria-label={label} className="h-52 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 8, right: 4, left: -4, bottom: 0 }}>
+          <CartesianGrid vertical={false} stroke="var(--border)" />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} />
+          <YAxis tickFormatter={compactReais} tickLine={false} axisLine={false} fontSize={12} width={52} />
+          <Tooltip formatter={money} cursor={{ fill: "var(--muted)" }} {...tooltipStyle} />
+          <Bar dataKey="Compromisso" fill="var(--chart-2)" radius={[4, 4, 0, 0]} maxBarSize={28} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}

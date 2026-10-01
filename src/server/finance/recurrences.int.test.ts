@@ -53,6 +53,7 @@ const rec = (over: Partial<RecurrenceInput> = {}): RecurrenceInput => ({
   endMode: "NONE",
   occurrenceCount: null,
   untilDate: null,
+  cardId: null,
   ...over,
 });
 
