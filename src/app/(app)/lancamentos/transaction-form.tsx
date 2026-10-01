@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronDown } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ChevronDown, Repeat } from "lucide-react";
 import { ActionForm, Field, FieldError, FormMessage, SubmitButton } from "@/components/form";
 import { CategoryBadge } from "@/components/category-icon";
 import { NativeSelect } from "@/components/native-select";
@@ -50,6 +50,7 @@ export function TransactionForm({
   suggestedCategoryIds,
   suggestedAccountIds,
   today,
+  series,
 }: {
   transactionId: string | null;
   idempotencyKey: string;
@@ -60,11 +61,20 @@ export function TransactionForm({
   suggestedCategoryIds: string[];
   suggestedAccountIds: string[];
   today: string;
+  /** Edição de uma ocorrência de recorrência: posição e frequência (somente leitura). */
+  series?: { label: string; frequencyLabel: string } | null;
 }) {
   const [state, action] = useActionState(saveTransactionAction.bind(null, transactionId), { ok: false });
   const e = state.fieldErrors ?? {};
+  const canRepeat = !transactionId;
+  const isOccurrence = !!series;
 
   const [kind, setKind] = useState<Kind>(initial.kind);
+  const [repeat, setRepeat] = useState(false);
+  const [frequency, setFrequency] = useState<"WEEKLY" | "MONTHLY" | "YEARLY">("MONTHLY");
+  const [endMode, setEndMode] = useState<"COUNT" | "UNTIL" | "NONE">("NONE");
+  const [paidOn, setPaidOn] = useState(today);
+  const [scope, setScope] = useState<"only" | "following">("only");
   const [amount, setAmount] = useState(initial.amountCents ? centsToInput(initial.amountCents) : "");
   const [categoryId, setCategoryId] = useState(initial.categoryId ?? "");
   const [accountId, setAccountId] = useState(initial.accountId ?? accounts[0]?.id ?? "");
@@ -100,12 +110,19 @@ export function TransactionForm({
   }, [accounts, suggestedAccountIds]);
 
   const parsedAmount = parseBRL(amount);
-  const effectiveDate = paid ? date : "";
-  const dueDate = paid ? dueOverride || date : date;
-  const paidLabel = kind === "INCOME" ? "Já foi recebido" : kind === "TRANSFER" ? "Já foi feita" : "Já foi pago";
-  const dateLabel = paid
-    ? kind === "INCOME" ? "Data do recebimento" : kind === "TRANSFER" ? "Data da transferência" : "Data do pagamento"
-    : kind === "INCOME" ? "Data prevista" : "Vencimento";
+  // Recorrência: a data principal é a primeira ocorrência (prevista); a efetivação, se houver,
+  // é informada à parte e não pode ser futura.
+  const repeating = canRepeat && repeat;
+  const effectiveDate = paid ? (repeating ? paidOn : date) : "";
+  const dueDate = repeating ? date : paid ? dueOverride || date : date;
+  const paidLabel = kind === "INCOME" ? "Já foi recebido" : kind === "TRANSFER" ? "Já foi realizada" : "Já foi pago";
+  const paidDateLabel = kind === "INCOME" ? "Data do recebimento" : kind === "TRANSFER" ? "Data da transferência" : "Data do pagamento";
+  const dateLabel = repeating
+    ? "Primeira ocorrência"
+    : paid
+      ? paidDateLabel
+      : kind === "INCOME" ? "Data prevista" : "Vencimento";
+  const followingAllowed = isOccurrence && initial.status === "PENDING";
 
   if (accounts.length === 0) {
     return (
@@ -135,17 +152,50 @@ export function TransactionForm({
       <input type="hidden" name="status" value={paid ? "EFFECTIVE" : "PENDING"} />
       <input type="hidden" name="dueDate" value={dueDate} />
       <input type="hidden" name="effectiveDate" value={effectiveDate} />
+      {repeating && <input type="hidden" name="repeat" value="on" />}
 
-      <Segmented
-        name="kind"
-        legend="Tipo de lançamento"
-        value={kind}
-        onChange={(k) => {
-          setKind(k);
-          setCategoryId("");
-        }}
-        options={KIND_OPTIONS}
-      />
+      {isOccurrence ? (
+        <section className="grid gap-3 rounded-2xl bg-secondary/60 p-4">
+          <input type="hidden" name="kind" value={kind} />
+          <p className="flex items-center gap-2 font-medium text-secondary-foreground">
+            <Repeat aria-hidden className="size-4" />
+            {series!.label} · {series!.frequencyLabel}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Tipo e frequência não mudam. Para mudá-los, encerre esta recorrência e crie outra.
+          </p>
+          <fieldset className="grid gap-2">
+            <legend className="mb-1 text-sm font-medium">Aplicar alterações a</legend>
+            {(
+              [
+                { value: "only", label: "Só este lançamento", hint: "Pode mudar inclusive a data. Ele deixa de seguir as próximas alterações da série." },
+                ...(followingAllowed
+                  ? [{ value: "following", label: "Este e os próximos", hint: "Muda a regra a partir daqui. Não altera datas, efetivados nem lançamentos ajustados individualmente." }]
+                  : []),
+              ] as { value: "only" | "following"; label: string; hint: string }[]
+            ).map((o) => (
+              <label key={o.value} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg bg-card p-3 ring-1 ring-border has-[:checked]:ring-2 has-[:checked]:ring-primary">
+                <input type="radio" name="scope" value={o.value} checked={scope === o.value} onChange={() => setScope(o.value)} className="mt-1 size-4 accent-[var(--primary)]" />
+                <span>
+                  <span className="block font-medium">{o.label}</span>
+                  <span className="block text-sm text-muted-foreground">{o.hint}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        </section>
+      ) : (
+        <Segmented
+          name="kind"
+          legend="Tipo de lançamento"
+          value={kind}
+          onChange={(k) => {
+            setKind(k);
+            setCategoryId("");
+          }}
+          options={KIND_OPTIONS}
+        />
+      )}
 
       <section className="grid gap-4 rounded-2xl bg-card p-4 ring-1 ring-border">
         <div className="grid gap-1">
@@ -300,10 +350,90 @@ export function TransactionForm({
               </button>
             ))}
           </div>
-          {(e.dueDate || e.effectiveDate) && <FieldError>{e.effectiveDate ?? e.dueDate}</FieldError>}
+          {!repeating && (e.dueDate || e.effectiveDate) && <FieldError>{e.effectiveDate ?? e.dueDate}</FieldError>}
+          {repeating && e.dueDate && <FieldError>{e.dueDate}</FieldError>}
           {!paid && <p className="text-sm text-muted-foreground">Fica como pendente: aparece nas previsões, não no saldo.</p>}
         </div>
+        {repeating && paid && (
+          <div className="grid gap-1.5">
+            <Label htmlFor="paidOn">{paidDateLabel}</Label>
+            <input
+              id="paidOn"
+              type="date"
+              value={paidOn}
+              max={today}
+              onChange={(ev) => setPaidOn(ev.target.value)}
+              className="h-11 w-full rounded-lg border border-input bg-card px-3 text-base"
+            />
+            <p className="text-sm text-muted-foreground">Vale só para a primeira ocorrência; as próximas ficam pendentes.</p>
+            {e.effectiveDate && <FieldError>{e.effectiveDate}</FieldError>}
+          </div>
+        )}
       </section>
+
+      {canRepeat && (
+        <section className="grid gap-4 rounded-2xl bg-card p-4 ring-1 ring-border">
+          <div className="flex min-h-11 items-center justify-between gap-3">
+            <Label htmlFor="repeat" className="flex items-center gap-2 text-base">
+              <Repeat aria-hidden className="size-4 text-primary" /> Repetir
+            </Label>
+            <Switch id="repeat" checked={repeat} onCheckedChange={setRepeat} className="scale-125" />
+          </div>
+          {repeat && (
+            <>
+              <Segmented
+                name="frequency"
+                legend="Frequência"
+                value={frequency}
+                onChange={setFrequency}
+                options={[
+                  { value: "WEEKLY", label: "Semanal" },
+                  { value: "MONTHLY", label: "Mensal" },
+                  { value: "YEARLY", label: "Anual" },
+                ]}
+              />
+              <fieldset className="grid gap-2">
+                <legend className="mb-1 text-sm font-medium">Termina</legend>
+                <label className="flex min-h-11 items-center gap-3">
+                  <input type="radio" name="endMode" value="NONE" checked={endMode === "NONE"} onChange={() => setEndMode("NONE")} className="size-4 accent-[var(--primary)]" />
+                  Sem término
+                </label>
+                <label className="flex min-h-11 flex-wrap items-center gap-3">
+                  <input type="radio" name="endMode" value="COUNT" checked={endMode === "COUNT"} onChange={() => setEndMode("COUNT")} className="size-4 accent-[var(--primary)]" />
+                  Após
+                  <input
+                    name="occurrenceCount"
+                    aria-label="Número de ocorrências"
+                    inputMode="numeric"
+                    type="number"
+                    min={2}
+                    max={600}
+                    disabled={endMode !== "COUNT"}
+                    defaultValue={12}
+                    className="h-11 w-20 rounded-lg border border-input bg-card px-2 text-base disabled:opacity-50"
+                  />
+                  ocorrências
+                </label>
+                <label className="flex min-h-11 flex-wrap items-center gap-3">
+                  <input type="radio" name="endMode" value="UNTIL" checked={endMode === "UNTIL"} onChange={() => setEndMode("UNTIL")} className="size-4 accent-[var(--primary)]" />
+                  Até
+                  <input
+                    name="untilDate"
+                    aria-label="Data final (inclusive)"
+                    type="date"
+                    disabled={endMode !== "UNTIL"}
+                    className="h-11 min-w-0 flex-1 rounded-lg border border-input bg-card px-2 text-base disabled:opacity-50"
+                  />
+                </label>
+                {(e.occurrenceCount || e.untilDate || e.endMode) && <FieldError>{e.occurrenceCount ?? e.untilDate ?? e.endMode}</FieldError>}
+              </fieldset>
+              <p className="text-sm text-muted-foreground">
+                As ocorrências dos próximos 12 meses aparecem como pendentes; as seguintes são criadas automaticamente.
+              </p>
+            </>
+          )}
+        </section>
+      )}
 
       <section className="rounded-2xl bg-card ring-1 ring-border">
         <button
@@ -317,7 +447,7 @@ export function TransactionForm({
           <ChevronDown aria-hidden className={cn("size-5 transition-transform", advancedOpen && "rotate-180")} />
         </button>
         <div id="mais-detalhes" hidden={!advancedOpen} className="grid gap-4 px-4 pb-4">
-          {paid && (
+          {paid && !repeating && (
             <div className="grid gap-1.5">
               <Label htmlFor="dueOverride">Vencimento (se diferente)</Label>
               <input
@@ -351,7 +481,7 @@ export function TransactionForm({
       <FormMessage ok={state.ok} message={state.message} />
       <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 -mx-4 bg-gradient-to-t from-background via-background to-transparent px-4 pb-2 pt-4">
         <SubmitButton size="lg" pendingLabel="Salvando…">
-          {transactionId ? "Salvar alterações" : "Salvar lançamento"}
+          {transactionId ? "Salvar alterações" : repeating ? "Salvar recorrência" : "Salvar lançamento"}
         </SubmitButton>
       </div>
     </ActionForm>

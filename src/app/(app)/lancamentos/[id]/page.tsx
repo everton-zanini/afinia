@@ -15,6 +15,8 @@ import { getTransaction } from "@/server/finance/transactions";
 import { deleteTransactionAction } from "@/server/actions/finance";
 import { requireHousehold } from "@/server/session";
 import { StatusActions } from "./status-actions";
+import { DeleteOccurrence } from "./delete-occurrence";
+import { SeriesBadge } from "@/components/series-badge";
 
 export const metadata: Metadata = { title: "Lançamento" };
 
@@ -60,9 +62,15 @@ export default async function TransactionPage({ params, searchParams }: PageProp
           <p className="text-3xl font-semibold">
             <Money cents={t.amountCents} tone={TONE[t.kind]} signed={t.kind !== "TRANSFER"} />
           </p>
-          <div>
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
             <TransactionStatus status={t.status} kind={t.kind} dueDate={t.dueDate} today={today} />
+            {t.series && <SeriesBadge label={t.series.label} />}
           </div>
+          {t.series && (
+            <Link href={`/mais/recorrencias#${t.series.id}`} className="mx-auto inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline">
+              Ver recorrência{t.series.override ? " · ajustado individualmente" : ""}
+            </Link>
+          )}
         </section>
 
         <StatusActions id={t.id} status={t.status} kind={t.kind} today={today} />
@@ -97,6 +105,9 @@ export default async function TransactionPage({ params, searchParams }: PageProp
               Duplicar
             </Link>
           </Button>
+          {t.series ? (
+            <DeleteOccurrence id={t.id} description={t.description} />
+          ) : (
           <ConfirmAction
             action={deleteTransactionAction.bind(null, t.id)}
             title="Excluir lançamento?"
@@ -109,6 +120,7 @@ export default async function TransactionPage({ params, searchParams }: PageProp
             <Trash2 aria-hidden />
             Excluir
           </ConfirmAction>
+          )}
         </div>
       </div>
     </>

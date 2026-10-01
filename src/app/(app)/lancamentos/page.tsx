@@ -41,7 +41,7 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/lan
   const summary = summarize(rows);
   const byDay = new Map<string, TransactionDTO[]>();
   for (const t of rows) byDay.set(t.referenceDate, [...(byDay.get(t.referenceDate) ?? []), t]);
-  const activeFilters = ["q", "categoria", "conta", "situacao", "tipo", "pessoa", "de", "ate"].filter((k) => raw[k]).length;
+  const activeFilters = ["q", "categoria", "conta", "situacao", "tipo", "pessoa", "de", "ate", "serie"].filter((k) => raw[k]).length;
   const periodLabel = month
     ? formatMonthLong(month)
     : filters.from || filters.to
@@ -61,7 +61,7 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/lan
         }
       />
       <div className="grid gap-4">
-        {sp.salvo && <FormMessage ok message="Lançamento salvo." />}
+        {sp.salvo && <FormMessage ok message={sp.salvo === "recorrencia" ? "Recorrência criada. As ocorrências dos próximos 12 meses já aparecem como pendentes." : "Lançamento salvo."} />}
         {sp.excluido && <FormMessage ok message="Lançamento excluído." />}
 
         <div className="flex items-center justify-between gap-2">

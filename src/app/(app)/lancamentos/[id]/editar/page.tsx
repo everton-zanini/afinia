@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { todayISO } from "@/lib/dates";
+import { frequencyLabel } from "@/lib/finance/recurrence";
 import { NotFoundError } from "@/server/errors";
 import { getTransaction } from "@/server/finance/transactions";
 import { requireHousehold } from "@/server/session";
@@ -29,6 +30,7 @@ export default async function EditTransactionPage({ params }: PageProps<"/lancam
         transactionId={id}
         idempotencyKey={randomUUID()}
         today={todayISO()}
+        series={t.series ? { label: t.series.label, frequencyLabel: frequencyLabel(t.series.frequency) } : null}
         initial={{
           kind: t.kind,
           description: t.description,

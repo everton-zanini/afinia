@@ -3,7 +3,8 @@ import { cache } from "react";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getHouseholdContext } from "@/server/households/context";
+import { getHouseholdContext, type HouseholdContext } from "@/server/households/context";
+import { ensureGenerated } from "@/server/finance/recurrences";
 
 export type SessionUser = {
   id: string;
@@ -47,8 +48,17 @@ export async function requireHousehold() {
   const session = await requireUser();
   const ctx = await getCurrentHousehold(session.user.id);
   if (!ctx) redirect("/sem-casal");
+  await ensureRecurrences(ctx);
   return { ...session, ctx };
 }
+
+/**
+ * Materializa a janela das recorrências uma vez por requisição (sem tarefa agendada).
+ * O contexto vem de getCurrentHousehold (memoizado), então é o mesmo objeto na requisição.
+ */
+const ensureRecurrences = cache(async (ctx: HouseholdContext) => {
+  await ensureGenerated(ctx);
+});
 
 /** Exige administrador da plataforma; para os demais, a rota simplesmente não existe. */
 export async function requireAdmin() {

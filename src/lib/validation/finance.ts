@@ -104,6 +104,30 @@ export const transactionSchema = z
   }));
 export type TransactionInput = z.infer<typeof transactionSchema>;
 
+/** Parte "Repetir" do formulário. O término é validado também por validateEnd (regras puras). */
+export const recurrenceSchema = z
+  .object({
+    frequency: z.enum(["WEEKLY", "MONTHLY", "YEARLY"], { error: "Escolha a frequência" }),
+    endMode: z.enum(["COUNT", "UNTIL", "NONE"], { error: "Escolha quando termina" }),
+    occurrenceCount: z
+      .string()
+      .optional()
+      .transform((v) => (v && v.trim() ? Number(v) : null)),
+    untilDate: z
+      .string()
+      .optional()
+      .transform((v) => (v ? v : null))
+      .refine((v) => v === null || isISODate(v), "Informe uma data válida"),
+  })
+  .transform((d) => ({
+    ...d,
+    occurrenceCount: d.endMode === "COUNT" ? d.occurrenceCount : null,
+    untilDate: d.endMode === "UNTIL" ? d.untilDate : null,
+  }));
+export type RecurrenceInput = z.infer<typeof recurrenceSchema>;
+
+export const editScopeSchema = z.enum(["only", "following"]).catch("only");
+
 export const transactionFiltersSchema = z.object({
   from: isoDate.optional().catch(undefined),
   to: isoDate.optional().catch(undefined),
@@ -113,6 +137,7 @@ export const transactionFiltersSchema = z.object({
   status: z.enum(["PENDING", "EFFECTIVE"]).optional().catch(undefined),
   kind: z.enum(["INCOME", "EXPENSE", "TRANSFER"]).optional().catch(undefined),
   memberId: z.string().max(64).optional().catch(undefined),
+  seriesId: z.string().max(64).optional().catch(undefined),
 });
 export type TransactionFilters = z.infer<typeof transactionFiltersSchema>;
 

@@ -15,6 +15,7 @@ const PAGES = [
   "/mais/categorias",
   "/mais/contas",
   "/mais/instalar",
+  "/mais/recorrencias",
 ];
 
 for (const [label, width, height] of [

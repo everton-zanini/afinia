@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { KeyRound, LogOut, ShieldCheck, Smartphone, Tags, UserRound, Wallet } from "lucide-react";
+import { KeyRound, LogOut, Repeat, ShieldCheck, Smartphone, Tags, UserRound, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { MenuList } from "@/components/menu-list";
 import { logoutAction } from "@/server/actions/auth";
@@ -30,6 +30,12 @@ export default async function MorePage() {
                 label: "Contas",
                 description: "Onde o dinheiro está: banco, dinheiro, reserva",
                 icon: Wallet,
+              },
+              {
+                href: "/mais/recorrencias",
+                label: "Recorrências",
+                description: "Lançamentos que se repetem",
+                icon: Repeat,
               },
             ]}
           />

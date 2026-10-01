@@ -17,7 +17,7 @@ export type ListParams = {
  */
 export function parseListParams(sp: Raw): ListParams {
   const raw: Record<string, string> = {};
-  for (const key of ["mes", "de", "ate", "q", "categoria", "conta", "situacao", "tipo", "pessoa", "visao"]) {
+  for (const key of ["mes", "de", "ate", "q", "categoria", "conta", "situacao", "tipo", "pessoa", "visao", "serie"]) {
     const v = first(sp[key]);
     if (v) raw[key] = v;
   }
@@ -40,6 +40,7 @@ export function parseListParams(sp: Raw): ListParams {
     status: raw.situacao === "pendente" ? "PENDING" : raw.situacao === "efetivado" ? "EFFECTIVE" : undefined,
     kind: raw.tipo === "receita" ? "INCOME" : raw.tipo === "despesa" ? "EXPENSE" : raw.tipo === "transferencia" ? "TRANSFER" : undefined,
     memberId: raw.pessoa,
+    seriesId: raw.serie,
   });
   return { filters, month, raw };
 }

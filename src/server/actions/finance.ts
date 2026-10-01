@@ -7,10 +7,13 @@ import {
   accountSchema,
   budgetLimitSchema,
   categorySchema,
+  editScopeSchema,
   isoDate,
   isoMonth,
+  recurrenceSchema,
   transactionSchema,
 } from "@/lib/validation/finance";
+import * as recurrences from "@/server/finance/recurrences";
 import { type ActionState, formToObject, invalidInput, toActionError } from "@/server/action-result";
 import { requireHousehold } from "@/server/session";
 import * as accounts from "@/server/finance/accounts";
@@ -106,13 +109,24 @@ export async function deleteAccountAction(id: string): Promise<ActionState> {
 
 export async function saveTransactionAction(id: string | null, _prev: ActionState, formData: FormData): Promise<ActionState> {
   const { ctx } = await requireHousehold();
-  const parsed = transactionSchema.safeParse(formToObject(formData));
+  const raw = formToObject(formData);
+  const parsed = transactionSchema.safeParse(raw);
   if (!parsed.success) return invalidInput(parsed.error);
   let targetId: string;
   try {
     if (id) {
       targetId = idSchema.parse(id);
-      await transactions.updateTransaction(ctx, targetId, parsed.data);
+      const current = await transactions.getTransaction(ctx, targetId);
+      if (current.series) {
+        await recurrences.updateOccurrence(ctx, targetId, parsed.data, editScopeSchema.parse(raw.scope));
+      } else {
+        await transactions.updateTransaction(ctx, targetId, parsed.data);
+      }
+    } else if (raw.repeat === "on") {
+      const rec = recurrenceSchema.safeParse(raw);
+      if (!rec.success) return invalidInput(rec.error);
+      await recurrences.createSeries(ctx, parsed.data, rec.data);
+      targetId = "";
     } else {
       targetId = (await transactions.createTransaction(ctx, parsed.data)).id;
     }
@@ -120,7 +134,42 @@ export async function saveTransactionAction(id: string | null, _prev: ActionStat
     return toActionError(error);
   }
   refreshFinance();
+  if (!id && raw.repeat === "on") redirect("/lancamentos?salvo=recorrencia");
   redirect(id ? `/lancamentos/${targetId}?salvo=1` : `/lancamentos?salvo=1`);
+}
+
+export async function previewDeleteFollowingAction(id: string) {
+  const { ctx } = await requireHousehold();
+  return recurrences.previewDeleteFollowing(ctx, idSchema.parse(id));
+}
+
+export async function deleteOccurrenceAction(id: string, scope: "only" | "following"): Promise<ActionState> {
+  const { ctx } = await requireHousehold();
+  try {
+    await recurrences.deleteOccurrence(ctx, idSchema.parse(id), editScopeSchema.parse(scope));
+  } catch (error) {
+    return toActionError(error);
+  }
+  refreshFinance();
+  redirect("/lancamentos?excluido=1");
+}
+
+export async function previewEndSeriesAction(seriesId: string, date: string) {
+  const { ctx } = await requireHousehold();
+  return recurrences.previewEnd(ctx, idSchema.parse(seriesId), isoDate.parse(date));
+}
+
+export async function endSeriesAction(seriesId: string, date: string): Promise<ActionState> {
+  const { ctx } = await requireHousehold();
+  const parsedDate = isoDate.safeParse(date);
+  if (!parsedDate.success) return { ok: false, message: "Informe uma data válida" };
+  try {
+    await recurrences.endSeries(ctx, idSchema.parse(seriesId), parsedDate.data);
+  } catch (error) {
+    return toActionError(error);
+  }
+  refreshFinance();
+  return { ok: true, message: "Recorrência encerrada." };
 }
 
 export async function markEffectiveAction(id: string, date: string): Promise<ActionState> {

@@ -3,6 +3,7 @@ import { ArrowLeftRight } from "lucide-react";
 import { CategoryBadge } from "@/components/category-icon";
 import { Money } from "@/components/money";
 import { TransactionStatus } from "@/components/transaction-status";
+import { SeriesBadge } from "@/components/series-badge";
 import type { TransactionDTO } from "@/server/finance/transactions";
 
 const TONE = { INCOME: "income", EXPENSE: "expense", TRANSFER: "transfer" } as const;
@@ -24,6 +25,7 @@ export function TransactionRow({ t, today }: { t: TransactionDTO; today: string 
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium">{t.description}</span>
         <span className="block truncate text-sm text-muted-foreground">{subtitle}</span>
+        {t.series && <SeriesBadge label={t.series.label} />}
       </span>
       <span className="flex shrink-0 flex-col items-end gap-0.5">
         <Money

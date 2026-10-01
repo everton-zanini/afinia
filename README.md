@@ -190,15 +190,26 @@ Nunca use credenciais de produção nos testes; os testes só aceitam bancos `*_
   receitas, despesas ou orçamento.
 - Lançamentos efetivados precisam ser na data de abertura da conta ou depois.
 - Categorias/contas usadas são arquivadas, nunca excluídas.
+- **Recorrências** (Repetir no novo lançamento; Mais → Recorrências): semanal, mensal ou anual,
+  com término após N ocorrências, até uma data (inclusive) ou sem término. As ocorrências com data
+  até hoje + 12 meses existem como lançamentos pendentes e são criadas automaticamente quando o
+  casal usa o app (sem tarefa agendada), inclusive as que ficaram para trás após um período sem
+  uso. Cada ocorrência tem posição fixa na série; edição e exclusão perguntam "Só este lançamento"
+  ou "Este e os próximos" e nunca alteram lançamentos efetivados.
 - **Offline**: o service worker guarda só recursos públicos e estáticos; páginas, APIs e dados
   financeiros nunca vão para o cache. Sem conexão, nada é salvo.
 
 ## Limitações e próximos passos
 
-Fora do MVP: cartões e faturas, parcelamento, recorrência automática, conciliação e Open
-Finance, cadastro público, recuperação de senha por email, finanças privadas por membro,
-notificações push, gravação/sincronização offline e recursos com IA.
+Fora do MVP: cartões e faturas, compras parceladas no cartão, conciliação e Open Finance,
+cadastro público, recuperação de senha por email, finanças privadas por membro, notificações
+push, gravação/sincronização offline e recursos com IA.
 
-Próximos passos sugeridos: recuperação de senha por email (com serviço transacional),
-lançamentos recorrentes, agregações em SQL quando o histórico crescer e testes E2E em Safari/iOS
+Recorrências não representam compras parceladas: estas virão no módulo de cartões, vinculadas à
+compra original e às faturas. Quando houver cartões, uma recorrência cobrada no cartão deverá
+gerar uma cobrança vinculada à fatura, sem descontar diretamente uma conta bancária e sem duplicar
+a despesa no pagamento da fatura.
+
+Próximos passos sugeridos: módulo de cartões e faturas, recuperação de senha por email (com
+serviço transacional), agregações em SQL quando o histórico crescer e testes E2E em Safari/iOS
 real.

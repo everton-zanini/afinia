@@ -4,6 +4,7 @@ import { DomainError, NotFoundError } from "@/server/errors";
 import type { HouseholdContext } from "@/server/households/context";
 import { addDays, fromDbDate, todayISO, toDbDate, type ISODate } from "@/lib/dates";
 import type { TransactionFilters, TransactionInput } from "@/lib/validation/finance";
+import { positionLabel } from "@/lib/finance/recurrence";
 import { isUniqueViolation } from "./common";
 
 export type TransactionDTO = {
@@ -23,6 +24,14 @@ export type TransactionDTO = {
   createdBy: { id: string; name: string };
   createdAt: string;
   updatedAt: string;
+  /** Posição na recorrência, quando for uma ocorrência. */
+  series: {
+    id: string;
+    index: number;
+    label: string;
+    override: boolean;
+    frequency: "WEEKLY" | "MONTHLY" | "YEARLY";
+  } | null;
 };
 
 const detailSelect = {
@@ -41,6 +50,9 @@ const detailSelect = {
   toAccount: { select: { id: true, name: true } },
   responsibleMember: { select: { id: true, user: { select: { name: true } } } },
   createdBy: { select: { id: true, name: true } },
+  occurrenceIndex: true,
+  seriesOverride: true,
+  series: { select: { id: true, frequency: true, endMode: true, occurrenceCount: true } },
 } satisfies Prisma.TransactionSelect;
 
 type DetailRow = Prisma.TransactionGetPayload<{ select: typeof detailSelect }>;
@@ -74,6 +86,16 @@ function toDTO(t: DetailRow): TransactionDTO {
     createdBy: t.createdBy,
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
+    series:
+      t.series && t.occurrenceIndex !== null
+        ? {
+            id: t.series.id,
+            index: t.occurrenceIndex,
+            label: positionLabel(t.occurrenceIndex, t.series),
+            override: t.seriesOverride,
+            frequency: t.series.frequency,
+          }
+        : null,
   };
 }
 
@@ -83,7 +105,7 @@ type Existing = { categoryId: string | null; accountId: string; toAccountId: str
  * Valida referências do lançamento contra o casal da sessão. Contas/categorias arquivadas só são
  * aceitas quando já eram usadas por este mesmo lançamento (edição sem trocar a referência).
  */
-async function validateReferences(ctx: HouseholdContext, input: TransactionInput, existing: Existing) {
+export async function validateReferences(ctx: HouseholdContext, input: TransactionInput, existing: Existing) {
   const accountIds = [input.accountId, input.toAccountId].filter((v): v is string => !!v);
   const accounts = await db.financialAccount.findMany({
     where: { householdId: ctx.householdId, id: { in: accountIds } },
@@ -120,7 +142,7 @@ async function validateReferences(ctx: HouseholdContext, input: TransactionInput
   }
 }
 
-function dataFrom(input: TransactionInput) {
+export function dataFrom(input: TransactionInput) {
   return {
     kind: input.kind,
     status: input.status,
@@ -177,15 +199,18 @@ export async function createTransaction(ctx: HouseholdContext, input: Transactio
 export async function updateTransaction(ctx: HouseholdContext, id: string, input: TransactionInput) {
   const current = await db.transaction.findFirst({
     where: { id, householdId: ctx.householdId },
-    select: { categoryId: true, accountId: true, toAccountId: true },
+    select: { categoryId: true, accountId: true, toAccountId: true, seriesId: true },
   });
   if (!current) throw new NotFoundError();
+  // Ocorrências de recorrência são editadas em escopo (recurrences.updateOccurrence).
+  if (current.seriesId) throw new DomainError("Escolha se a alteração vale só para este lançamento ou também para os próximos");
   await validateReferences(ctx, input, current);
   await db.transaction.update({ where: { id, householdId: ctx.householdId }, data: dataFrom(input) });
 }
 
 export async function deleteTransaction(ctx: HouseholdContext, id: string) {
-  const { count } = await db.transaction.deleteMany({ where: { id, householdId: ctx.householdId } });
+  // Ocorrências de recorrência são excluídas em escopo (recurrences.deleteOccurrence).
+  const { count } = await db.transaction.deleteMany({ where: { id, householdId: ctx.householdId, seriesId: null } });
   if (count === 0) throw new NotFoundError();
 }
 
@@ -255,6 +280,7 @@ export async function buildWhere(ctx: HouseholdContext, f: TransactionFilters): 
   if (f.kind) and.push({ kind: f.kind });
   if (f.accountId) and.push({ OR: [{ accountId: f.accountId }, { toAccountId: f.accountId }] });
   if (f.memberId) and.push({ responsibleMemberId: f.memberId });
+  if (f.seriesId) and.push({ seriesId: f.seriesId });
   if (f.categoryId) {
     const children = await db.category.findMany({
       where: { householdId: ctx.householdId, parentId: f.categoryId },

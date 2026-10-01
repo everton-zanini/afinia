@@ -7,6 +7,7 @@ import { assertTestDatabaseUrl } from "../src/server/test-db-guard";
 import { getHouseholdContext } from "../src/server/households/context";
 import { resetDatabase } from "../test/db";
 import { loadFixture } from "../test/finance-fixture";
+import { createAccount } from "../src/server/finance/accounts";
 import { E2E } from "./fixtures";
 
 async function household(name: string, userIds: string[]) {
@@ -30,6 +31,11 @@ async function main() {
   const fx = await createCredentialUser({ ...E2E.fixture, mustChangePassword: false });
   await household("Casa Fixture", [fx.id]);
   await loadFixture((await getHouseholdContext(fx.id))!);
+  const rec = await createCredentialUser({ ...E2E.rec, mustChangePassword: false });
+  await household("Casa Recorrência", [rec.id]);
+  await createAccount((await getHouseholdContext(rec.id))!, {
+    name: "Corrente", kind: "CHECKING", openingBalance: 500_000, openingDate: "2025-01-01",
+  });
 }
 
 main()

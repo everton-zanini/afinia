@@ -12,21 +12,22 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model User {
-  id                  String           @id
+  id                  String            @id
   name                String
-  email               String           @unique
-  emailVerified       Boolean          @default(false)
+  email               String            @unique
+  emailVerified       Boolean           @default(false)
   image               String?
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
   // Administrador da plataforma: gerencia casais de teste; não concede acesso às finanças deles.
-  isPlatformAdmin     Boolean          @default(false)
+  isPlatformAdmin     Boolean           @default(false)
   // Senha temporária definida pelo administrador/bootstrap: troca obrigatória no próximo acesso.
-  mustChangePassword  Boolean          @default(false)
+  mustChangePassword  Boolean           @default(false)
   sessions            Session[]
   accounts            Account[]
   membership          HouseholdMember?
-  createdTransactions Transaction[]    @relation("TransactionCreatedBy")
+  createdTransactions Transaction[]     @relation("TransactionCreatedBy")
+  createdSeries       RecurringSeries[] @relation("SeriesCreatedBy")
 
   @@map("user")
 }
@@ -94,17 +95,18 @@ model RateLimit {
 
 // Invariante: todo dado financeiro pertence a exatamente um Household.
 model Household {
-  id           String             @id @default(cuid())
-  name         String
+  id              String             @id @default(cuid())
+  name            String
   // Casal desativado: dados preservados, login e sessões dos membros bloqueados.
-  active       Boolean            @default(true)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  members      HouseholdMember[]
-  categories   Category[]
-  accounts     FinancialAccount[]
-  transactions Transaction[]
-  budgets      Budget[]
+  active          Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  members         HouseholdMember[]
+  categories      Category[]
+  accounts        FinancialAccount[]
+  transactions    Transaction[]
+  budgets         Budget[]
+  recurringSeries RecurringSeries[]
 
   @@map("household")
 }
@@ -112,14 +114,15 @@ model Household {
 // Invariantes: um casal por usuário (userId único); no máximo 2 membros ativos por casal
 // (garantido em src/server/households/members.ts, único ponto que cria vínculos).
 model HouseholdMember {
-  id             String        @id @default(cuid())
-  householdId    String
-  userId         String        @unique
-  active         Boolean       @default(true)
-  createdAt      DateTime      @default(now())
-  household      Household     @relation(fields: [householdId], references: [id], onDelete: Restrict)
-  user           User          @relation(fields: [userId], references: [id], onDelete: Restrict)
-  responsibleFor Transaction[]
+  id               String          @id @default(cuid())
+  householdId      String
+  userId           String          @unique
+  active           Boolean         @default(true)
+  createdAt        DateTime        @default(now())
+  household        Household       @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  responsibleFor   Transaction[]
+  responsibleRules RecurringRule[]
 
   @@index([householdId, active])
   @@map("household_member")
@@ -142,7 +145,7 @@ enum CategoryKind {
 
 // "Categorias" na interface: compõem o plano de contas (finalidade da receita/despesa).
 model Category {
-  id           String        @id @default(cuid())
+  id           String          @id @default(cuid())
   householdId  String
   parentId     String?
   kind         CategoryKind
@@ -150,13 +153,14 @@ model Category {
   color        String
   icon         String
   archivedAt   DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  household    Household     @relation(fields: [householdId], references: [id], onDelete: Restrict)
-  parent       Category?     @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children     Category[]    @relation("CategoryTree")
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  household    Household       @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  parent       Category?       @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children     Category[]      @relation("CategoryTree")
   transactions Transaction[]
   budgets      Budget[]
+  rules        RecurringRule[]
 
   @@index([householdId, kind])
   @@index([parentId])
@@ -171,18 +175,20 @@ enum AccountKind {
 
 // Conta financeira: onde o dinheiro está. O saldo inicial é posição de abertura, não receita.
 model FinancialAccount {
-  id                  String        @id @default(cuid())
+  id                  String          @id @default(cuid())
   householdId         String
   name                String
   kind                AccountKind
   openingBalanceCents Int
-  openingDate         DateTime      @db.Date
+  openingDate         DateTime        @db.Date
   archivedAt          DateTime?
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-  household           Household     @relation(fields: [householdId], references: [id], onDelete: Restrict)
-  outgoing            Transaction[] @relation("TransactionAccount")
-  incoming            Transaction[] @relation("TransactionToAccount")
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  household           Household       @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  outgoing            Transaction[]   @relation("TransactionAccount")
+  incoming            Transaction[]   @relation("TransactionToAccount")
+  ruleOutgoing        RecurringRule[] @relation("RuleAccount")
+  ruleIncoming        RecurringRule[] @relation("RuleToAccount")
 
   @@index([householdId])
   @@map("financial_account")
@@ -225,8 +231,15 @@ model Transaction {
   toAccount           FinancialAccount? @relation("TransactionToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
   responsibleMember   HouseholdMember?  @relation(fields: [responsibleMemberId], references: [id], onDelete: Restrict)
   createdBy           User              @relation("TransactionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  // Ocorrência de recorrência: identidade estável pela posição (independe da data prevista).
+  // Definidos só pelo servidor ao gerar; seriesOverride = personalizada com "Só este lançamento".
+  seriesId            String?
+  occurrenceIndex     Int?
+  seriesOverride      Boolean           @default(false)
+  series              RecurringSeries?  @relation(fields: [seriesId], references: [id], onDelete: Restrict)
 
   @@unique([householdId, idempotencyKey])
+  @@unique([seriesId, occurrenceIndex])
   @@index([householdId, effectiveDate])
   @@index([householdId, dueDate])
   @@index([householdId, accountId])
@@ -249,6 +262,89 @@ model Budget {
 
   @@unique([householdId, month, categoryId])
   @@map("budget")
+}
+
+// ---------------------------------------------------------------------------
+// Recorrências (definição separada dos lançamentos; ocorrências são lançamentos comuns)
+// Invariantes no banco (migration `recurring_transactions`): uma ocorrência por posição,
+// gatilhos de isolamento entre casais, CHECKs de forma/valor e de término.
+// ---------------------------------------------------------------------------
+
+enum RecurrenceFrequency {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum RecurrenceEndMode {
+  COUNT
+  UNTIL
+  NONE
+}
+
+model RecurringSeries {
+  id                    String               @id @default(cuid())
+  householdId           String
+  // Imutáveis após a criação: para mudá-los, encerra-se a série e cria-se outra.
+  kind                  TransactionKind
+  frequency             RecurrenceFrequency
+  startDate             DateTime             @db.Date
+  endMode               RecurrenceEndMode
+  occurrenceCount       Int?
+  untilDate             DateTime?            @db.Date
+  // "Excluir este e os próximos": programação termina antes desta posição.
+  stopBeforeIndex       Int?
+  // "Encerrar recorrência": nenhuma posição com data prevista ≥ esta data.
+  stoppedOn             DateTime?            @db.Date
+  // Maior posição já avaliada pela geração (otimização; a unicidade garante a correção).
+  generatedThroughIndex Int                  @default(-1)
+  createdById           String
+  idempotencyKey        String
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  household             Household            @relation(fields: [householdId], references: [id], onDelete: Restrict)
+  createdBy             User                 @relation("SeriesCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  rules                 RecurringRule[]
+  exceptions            RecurringException[]
+  occurrences           Transaction[]
+
+  @@unique([householdId, idempotencyKey])
+  @@index([householdId])
+  @@map("recurring_series")
+}
+
+// Regra da série vigente a partir de uma posição (a de maior fromIndex ≤ posição).
+model RecurringRule {
+  id                  String            @id @default(cuid())
+  seriesId            String
+  fromIndex           Int
+  description         String
+  amountCents         Int
+  categoryId          String?
+  accountId           String
+  toAccountId         String?
+  responsibleMemberId String?
+  notes               String?
+  createdAt           DateTime          @default(now())
+  series              RecurringSeries   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  category            Category?         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  account             FinancialAccount  @relation("RuleAccount", fields: [accountId], references: [id], onDelete: Restrict)
+  toAccount           FinancialAccount? @relation("RuleToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+  responsibleMember   HouseholdMember?  @relation(fields: [responsibleMemberId], references: [id], onDelete: Restrict)
+
+  @@unique([seriesId, fromIndex])
+  @@map("recurring_rule")
+}
+
+// Posição excluída individualmente: nunca é gerada de novo.
+model RecurringException {
+  seriesId        String
+  occurrenceIndex Int
+  createdAt       DateTime        @default(now())
+  series          RecurringSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@id([seriesId, occurrenceIndex])
+  @@map("recurring_exception")
 }
 
 // Limitação de tentativas de login por email (regra do Afinia).
